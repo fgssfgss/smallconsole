@@ -397,261 +397,239 @@ static void cpu_step() {
             break;
         case 0x7F: // LD A, A
             break;
-        case 0x80:
+        case 0x80: // ADD A, B
             break;
-        case 0x81:
+        case 0x81: // ADD A, C
             break;
-        case 0x82:
+        case 0x82: // ADD A, D
             break;
-        case 0x83:
+        case 0x83: // ADD A, E
             break;
-        case 0x84:
+        case 0x84: // ADD A, H
             break;
-        case 0x85:
+        case 0x85: // ADD A, L
             break;
-        case 0x86:
+        case 0x86: // ADD A, (HL)
             break;
-        case 0x87:
+        case 0x87: // ADD A, A
             break;
-        case 0x88:
+        case 0x88: // ADC A, B
             break;
-        case 0x89:
+        case 0x89: // ADC A, C
             break;
-        case 0x8A:
+        case 0x8A: // ADC A, D
             break;
-        case 0x8B:
+        case 0x8B: // ADC A, E
             break;
-        case 0x8C:
+        case 0x8C: // ADC A, H
             break;
-        case 0x8D:
+        case 0x8D: // ADC A, L
             break;
-        case 0x8E:
+        case 0x8E: // ADC A, (HL)
             break;
-        case 0x8F:
+        case 0x8F: // ADC A, A
             break;
-        case 0x90:
+        case 0x90: // SUB B
             break;
-        case 0x91:
+        case 0x91: // SUB C
             break;
-        case 0x92:
+        case 0x92: // SUB D
             break;
-        case 0x93:
+        case 0x93: // SUB E
             break;
-        case 0x94:
+        case 0x94: // SUB H
             break;
-        case 0x95:
+        case 0x95: // SUB L
             break;
-        case 0x96:
+        case 0x96: // SUB (HL)
             break;
-        case 0x97:
+        case 0x97: // SUB A
             break;
-        case 0x98:
+        case 0x98: // SBC A, B
             break;
-        case 0x99:
+        case 0x99: // SBC A, C
             break;
-        case 0x9A:
+        case 0x9A: // SBC A, D
             break;
-        case 0x9B:
+        case 0x9B: // SBC A, E
             break;
-        case 0x9C:
+        case 0x9C: // SBC A, H
             break;
-        case 0x9D:
+        case 0x9D: // SBC A, L
             break;
-        case 0x9E:
+        case 0x9E: // SBC A, (HL)
             break;
-        case 0x9F:
+        case 0x9F: // SBC A, A
             break;
-        case 0xA0:
+        case 0xA0: // AND B
             break;
-        case 0xA1:
+        case 0xA1: // AND C
             break;
-        case 0xA2:
+        case 0xA2: // AND D
             break;
-        case 0xA3:
+        case 0xA3: // AND E
             break;
-        case 0xA4:
+        case 0xA4: // AND H
             break;
-        case 0xA5:
+        case 0xA5: // AND L
             break;
-        case 0xA6:
+        case 0xA6: // AND (HL)
             break;
-        case 0xA7:
+        case 0xA7: // AND A
             break;
-        case 0xA8:
+        case 0xA8: // XOR B
             break;
-        case 0xA9:
+        case 0xA9: // XOR C
             break;
-        case 0xAA:
+        case 0xAA: // XOR D
             break;
-        case 0xAB:
+        case 0xAB: // XOR E
             break;
-        case 0xAC:
+        case 0xAC: // XOR H
             break;
-        case 0xAD:
+        case 0xAD: // XOR L
             break;
-        case 0xAE:
+        case 0xAE: // XOR (HL)
             break;
-        case 0xAF:
+        case 0xAF: // XOR A
             break;
-        case 0xB0:
+        case 0xB0: // OR B
             break;
-        case 0xB1:
+        case 0xB1: // OR C
             break;
-        case 0xB2:
+        case 0xB2: // OR D
             break;
-        case 0xB3:
+        case 0xB3: // OR E
             break;
-        case 0xB4:
+        case 0xB4: // OR H
             break;
-        case 0xB5:
+        case 0xB5: // OR L
             break;
-        case 0xB6:
+        case 0xB6: // OR (HL)
             break;
-        case 0xB7:
+        case 0xB7: // OR A
             break;
-        case 0xB8:
+        case 0xB8: // CP B
             break;
-        case 0xB9:
+        case 0xB9: // CP C
             break;
-        case 0xBA:
+        case 0xBA: // CP D
             break;
-        case 0xBB:
+        case 0xBB: // CP E
             break;
-        case 0xBC:
+        case 0xBC: // CP H
             break;
-        case 0xBD:
+        case 0xBD: // CP L
             break;
-        case 0xBE:
+        case 0xBE: // CP (HL)
             break;
-        case 0xBF:
+        case 0xBF: // CP A
             break;
-        case 0xC0:
+        case 0xC0: // RET NZ
             break;
-        case 0xC1:
+        case 0xC1: // POP BC
             break;
-        case 0xC2:
+        case 0xC2: // JP NZ, a16
             break;
-        case 0xC3:
+        case 0xC3: // JP a16
             break;
-        case 0xC4:
+        case 0xC4: // CALL NZ, a16
             break;
-        case 0xC5:
+        case 0xC5: // PUSH BC
             break;
-        case 0xC6:
+        case 0xC6: // ADD A, d8
             break;
-        case 0xC7:
+        case 0xC7: // RST 00H
             break;
-        case 0xC8:
+        case 0xC8: // RET Z
             break;
-        case 0xC9:
+        case 0xC9: // RET
             break;
-        case 0xCA:
+        case 0xCA: // JP Z, a16
             break;
-        case 0xCB:
+        case 0xCB: // PREFIX CB
             break;
-        case 0xCC:
+        case 0xCC: // CALL Z, a16
             break;
-        case 0xCD:
+        case 0xCD: // CALL a16
             break;
-        case 0xCE:
+        case 0xCE: // ADC A, d8
             break;
-        case 0xCF:
+        case 0xCF: // RST 08H
             break;
-        case 0xD0:
+        case 0xD0: // RET NC
             break;
-        case 0xD1:
+        case 0xD1: // POP DE
             break;
-        case 0xD2:
+        case 0xD2: // JP NC, a16
             break;
-        case 0xD3:
+        case 0xD4: // CALL NC, a16
             break;
-        case 0xD4:
+        case 0xD5: // PUSH DE
             break;
-        case 0xD5:
+        case 0xD6: // SUB d8
             break;
-        case 0xD6:
+        case 0xD7: // RST 10H
             break;
-        case 0xD7:
+        case 0xD8: // RET C
             break;
-        case 0xD8:
+        case 0xD9: // RETI
             break;
-        case 0xD9:
+        case 0xDA: // JP C, a16
             break;
-        case 0xDA:
+        case 0xDC: // CALL C, a16
             break;
-        case 0xDB:
+        case 0xDE: // SBC A, d8
             break;
-        case 0xDC:
+        case 0xDF: // RST 18H
             break;
-        case 0xDD:
+        case 0xE0: // LDH (a8), A
             break;
-        case 0xDE:
+        case 0xE1: // POP HL
             break;
-        case 0xDF:
+        case 0xE2: // LD (C), A
             break;
-        case 0xE0:
+        case 0xE5: // PUSH HL
             break;
-        case 0xE1:
+        case 0xE6: // AND d8
             break;
-        case 0xE2:
+        case 0xE7: // RST 20H
             break;
-        case 0xE3:
+        case 0xE8: // ADD SP, r8
             break;
-        case 0xE4:
+        case 0xE9: // JP (HL)
             break;
-        case 0xE5:
+        case 0xEA: // LD (a16), A
             break;
-        case 0xE6:
+        case 0xEE: // XOR d8
             break;
-        case 0xE7:
+        case 0xEF: // RST 28H
             break;
-        case 0xE8:
+        case 0xF0: //LDH A, (a8)
             break;
-        case 0xE9:
+        case 0xF1: // POP AF
             break;
-        case 0xEA:
+        case 0xF2: // LD A, (C)
             break;
-        case 0xEB:
+        case 0xF3: // DI
             break;
-        case 0xEC:
+        case 0xF5: // PUSH AF
             break;
-        case 0xED:
+        case 0xF6: // OR d8
             break;
-        case 0xEE:
+        case 0xF7: // RST 30H
             break;
-        case 0xEF:
+        case 0xF8: // LD HL, SP+r8
             break;
-        case 0xF0:
+        case 0xF9: // LD SP, HL
             break;
-        case 0xF1:
+        case 0xFA: // LD A, (a16)
             break;
-        case 0xF2:
+        case 0xFB: // EI
             break;
-        case 0xF3:
+        case 0xFE: // CP d8
             break;
-        case 0xF4:
-            break;
-        case 0xF5:
-            break;
-        case 0xF6:
-            break;
-        case 0xF7:
-            break;
-        case 0xF8:
-            break;
-        case 0xF9:
-            break;
-        case 0xFA:
-            break;
-        case 0xFB:
-            break;
-        case 0xFC:
-            break;
-        case 0xFD:
-            break;
-        case 0xFE:
-            break;
-        case 0xFF:
+        case 0xFF: // RST 38H
             break;
         default:
             break;
