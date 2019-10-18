@@ -3,6 +3,6 @@
 
 void init_cpu(const char *rom_filename);
 
-void run_cpu();
+void cpu_run();
 
 #endif /* _CPU_H_ */
