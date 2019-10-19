@@ -6,8 +6,9 @@ int main() {
 
 	printl("EMULATOR INIT");
 	// dump this file from somewhere
-	init_cpu("tetris.gb");
+    init_cpu();
     cpu_run();
+    //cpu_load_rom("tetris.gb");
 
 	shutdown_common();
 	return 0;

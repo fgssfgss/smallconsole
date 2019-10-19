@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#define ALWAYS_INLINE __attribute__((always_inline))
+
 void init_common();
 
 void shutdown_common();

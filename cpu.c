@@ -1,11 +1,33 @@
 #include "common.h"
 #include "cpu.h"
 
+enum {
+    C = 4,
+    H = 5,
+    N = 6,
+    Z = 7
+};
+
+// I assume that cpu_state is `cpu` object
+#define GET_FLAG(flag)   ((cpu.f >> (flag)) & 0x1)
+#define SET_FLAG(flag)   (cpu.f |= (0x1 << (flag)))
+#define UNSET_FLAG(flag) (cpu.f &= ~(0x1 << (flag))
+
+static void cpu_dump_state();
+
 static void cpu_step();
 
 static uint8_t cpu_read_register(uint16_t addr);
 
 static void cpu_write_register(uint16_t addr, uint8_t val);
+
+static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr);
+
+static inline ALWAYS_INLINE void write_byte(uint16_t addr, uint8_t val);
+
+static inline ALWAYS_INLINE uint16_t read_word(uint16_t addr);
+
+static inline ALWAYS_INLINE void write_word(uint16_t addr, uint16_t val);
 
 typedef struct __cpu_state {
     struct {
@@ -46,8 +68,6 @@ typedef struct __cpu_state {
     };
     uint16_t sp;
     uint16_t pc;
-
-    uint8_t flag;
 } cpu_state;
 
 // CPU STATE
@@ -58,42 +78,82 @@ static uint8_t rom0[0x8000]; // 0x0000 -> 0x3FFF ROM bank #0
 // 0x4000 -> 0x7FFF ROM bank #1, just for no mapper roms setup
 static uint8_t vram[0x4000]; // 0x8000 -> 0x9FFF Video RAM
 static uint8_t sram[0x4000]; // 0xA000 -> 0xBFFF switchable RAM
-static uint8_t iram[0x4000]; // 0xC000 -> 0xF0FF internal RAM
+static uint8_t iram[0x4000]; // 0xC000 -> 0xDFFF internal RAM
 // 0xFF00 -> 0xFFFF - registers, handled via two functions
 
-#define READBYTE(addr) ({                                                   \
-                       uint16_t __addr = (addr);                            \
-                       uint8_t __val = 0;                                   \
-                       if (__addr >= 0 && __addr <= 0x7FFF) {               \
-                           __val = rom0[__addr];                            \
-                       } else if (__addr >= 0x8000 && __addr <= 0x9FFF) {   \
-                           __val = vram[__addr % 0x8000];                   \
-                       } else if (__addr >= 0xA000 && __addr <= 0xBFFF) {   \
-                           __val = sram[__addr % 0xA000];                   \
-                       } else if (__addr >= 0xC000 && __addr <= 0xF0FF) {   \
-                           __val = iram[__addr % 0xC000];                   \
-                       } else {                                             \
-                           __val = cpu_read_register(__addr);               \
-                       }                                                    \
-                       __val;                                               \
-})
+static uint8_t boot_rom[256] = {
+        0x31, 0xfe, 0xff, 0xaf, 0x21, 0xff, 0x9f, 0x32, 0xcb, 0x7c, 0x20, 0xfb,
+        0x21, 0x26, 0xff, 0x0e, 0x11, 0x3e, 0x80, 0x32, 0xe2, 0x0c, 0x3e, 0xf3,
+        0xe2, 0x32, 0x3e, 0x77, 0x77, 0x3e, 0xfc, 0xe0, 0x47, 0x11, 0x04, 0x01,
+        0x21, 0x10, 0x80, 0x1a, 0xcd, 0x95, 0x00, 0xcd, 0x96, 0x00, 0x13, 0x7b,
+        0xfe, 0x34, 0x20, 0xf3, 0x11, 0xd8, 0x00, 0x06, 0x08, 0x1a, 0x13, 0x22,
+        0x23, 0x05, 0x20, 0xf9, 0x3e, 0x19, 0xea, 0x10, 0x99, 0x21, 0x2f, 0x99,
+        0x0e, 0x0c, 0x3d, 0x28, 0x08, 0x32, 0x0d, 0x20, 0xf9, 0x2e, 0x0f, 0x18,
+        0xf3, 0x67, 0x3e, 0x64, 0x57, 0xe0, 0x42, 0x3e, 0x91, 0xe0, 0x40, 0x04,
+        0x1e, 0x02, 0x0e, 0x0c, 0xf0, 0x44, 0xfe, 0x90, 0x20, 0xfa, 0x0d, 0x20,
+        0xf7, 0x1d, 0x20, 0xf2, 0x0e, 0x13, 0x24, 0x7c, 0x1e, 0x83, 0xfe, 0x62,
+        0x28, 0x06, 0x1e, 0xc1, 0xfe, 0x64, 0x20, 0x06, 0x7b, 0xe2, 0x0c, 0x3e,
+        0x87, 0xe2, 0xf0, 0x42, 0x90, 0xe0, 0x42, 0x15, 0x20, 0xd2, 0x05, 0x20,
+        0x4f, 0x16, 0x20, 0x18, 0xcb, 0x4f, 0x06, 0x04, 0xc5, 0xcb, 0x11, 0x17,
+        0xc1, 0xcb, 0x11, 0x17, 0x05, 0x20, 0xf5, 0x22, 0x23, 0x22, 0x23, 0xc9,
+        0xce, 0xed, 0x66, 0x66, 0xcc, 0x0d, 0x00, 0x0b, 0x03, 0x73, 0x00, 0x83,
+        0x00, 0x0c, 0x00, 0x0d, 0x00, 0x08, 0x11, 0x1f, 0x88, 0x89, 0x00, 0x0e,
+        0xdc, 0xcc, 0x6e, 0xe6, 0xdd, 0xdd, 0xd9, 0x99, 0xbb, 0xbb, 0x67, 0x63,
+        0x6e, 0x0e, 0xec, 0xcc, 0xdd, 0xdc, 0x99, 0x9f, 0xbb, 0xb9, 0x33, 0x3e,
+        0x3c, 0x42, 0xb9, 0xa5, 0xb9, 0xa5, 0x42, 0x3c, 0x21, 0x04, 0x01, 0x11,
+        0xa8, 0x00, 0x1a, 0x13, 0xbe, 0x20, 0xfe, 0x23, 0x7d, 0xfe, 0x34, 0x20,
+        0xf5, 0x06, 0x19, 0x78, 0x86, 0x23, 0x05, 0x20, 0xfb, 0x86, 0x20, 0xfe,
+        0x3e, 0x01, 0xe0, 0x50
+};
 
-#define WRITEBYTE(addr, val) ({                                             \
-                       uint16_t __addr = (addr);                            \
-                       if (__addr >= 0 && __addr <= 0x7FFF) {               \
-                           rom0[__addr] = (val);                            \
-                       } else if (__addr >= 0x8000 && __addr <= 0x9FFF) {   \
-                           vram[__addr % 0x8000] = (val);                   \
-                       } else if (__addr >= 0xA000 && __addr <= 0xBFFF) {   \
-                           sram[__addr % 0xA000] = (val);                   \
-                       } else if (__addr >= 0xC000 && __addr <= 0xF0FF) {   \
-                           iram[__addr % 0xC000] = (val);                   \
-                       } else {                                             \
-                           cpu_write_register(__addr, (val));               \
-                       }                                                    \
-})
+static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr) {
+    uint8_t val = 0;
+    if (addr >= 0 && addr <= 0x7FFF) {
+        val = rom0[addr];
+    } else if (addr >= 0x8000 && addr <= 0x9FFF) {
+        val = vram[addr % 0x8000];
+    } else if (addr >= 0xA000 && addr <= 0xBFFF) {
+        val = sram[addr % 0xA000];
+    } else if (addr >= 0xC000 && addr <= 0xDFFF) {
+        val = iram[addr % 0xC000];
+    } else if (addr >= 0xE000 && addr <= 0xFDFF) {
+        val = iram[addr % 0xE000];
+    } else {
+        val = cpu_read_register(addr);
+    }
+    return val;
+}
 
-void init_cpu(const char *rom_filename) {
+static inline ALWAYS_INLINE void write_byte(uint16_t addr, uint8_t val) {
+    if (addr >= 0 && addr <= 0x7FFF) {
+        rom0[addr] = val;
+    } else if (addr >= 0x8000 && addr <= 0x9FFF) {
+        vram[addr % 0x8000] = val;
+    } else if (addr >= 0xA000 && addr <= 0xBFFF) {
+        sram[addr % 0xA000] = val;
+    } else if (addr >= 0xC000 && addr <= 0xF0FF) {
+        iram[addr % 0xC000] = val;
+    } else if (addr >= 0xE000 && addr <= 0xFDFF) {
+        iram[addr % 0xE000] = val;
+    } else {
+        cpu_write_register(addr, val);
+    }
+}
+
+static inline ALWAYS_INLINE uint16_t read_word(uint16_t addr) {
+    uint8_t lo = read_byte(addr);
+    uint8_t hi = read_byte(addr + 1);
+    return (hi << 8) | lo;
+}
+
+static inline ALWAYS_INLINE void write_word(uint16_t addr, uint16_t val) {
+    uint8_t lo = val & 0xFF;
+    uint8_t hi = (val >> 8) & 0xFF;
+    write_byte(addr, lo);
+    write_byte(addr + 1, hi);
+}
+
+void cpu_load_rom(const char *rom_filename) {
     FILE *rom = fopen(rom_filename, "rb");
     long romsize = 0;
     if (rom == NULL) {
@@ -113,33 +173,41 @@ void init_cpu(const char *rom_filename) {
     fread(rom0, 0x1, 0x8000, rom);
     fclose(rom);
 
-    for (int i = 0xC500; i <= 0xFFFF; ++i) {
-        WRITEBYTE(i, 42);
-    }
-
-    WRITEBYTE(0xC500, 0xFF);
-    WRITEBYTE(0xC501, 0xFF);
-
-    // rom dump
+    // memory dump
     for (int i = 0, c = 0; i <= 0xFFFF; ++i) {
-        printf("%02x ", READBYTE(i));
+        printf("%02x ", read_byte(i));
 
         if (++c == 16) {
             c = 0;
             printf("\r\n");
         }
     }
+}
 
+void init_cpu() {
     cpu.pc = 0x0000;
     cpu.sp = 0x0000;
+
+    // copy boot rom to rom0 first page
+    // we will override it when rom will be loaded after it
+    for (int i = 0; i <= 0xFF; ++i) {
+        rom0[i] = boot_rom[i];
+    }
 }
 
 void cpu_run() {
     cpu_step();
+    cpu_step();
+    cpu_step();
+    cpu_step();
+    cpu_step();
 }
 
+// TODO: implement setting flags after steps
 static void cpu_step() {
-    uint8_t instruction = READBYTE(cpu.pc++);
+    uint8_t instruction = read_byte(cpu.pc++);
+    cpu_dump_state();
+    printl("instruction 0x%02x", instruction);
     switch (instruction) {
         case 0x00: // NOP
             break;
@@ -148,10 +216,13 @@ static void cpu_step() {
         case 0x02: // LD (BC), A
             break;
         case 0x03: // INC BC
+            cpu.bc++;
             break;
         case 0x04: // INC B
+            cpu.b++;
             break;
         case 0x05: // DEC B
+            cpu.b--;
             break;
         case 0x06: // LD B, d8
             break;
@@ -164,10 +235,13 @@ static void cpu_step() {
         case 0x0A: // LD A, (BC)
             break;
         case 0x0B: // DEC BC
+            cpu.bc--;
             break;
         case 0x0C: // INC C
+            cpu.c++;
             break;
         case 0x0D: // DEC C
+            cpu.c--;
             break;
         case 0x0E: // LD C, d8
             break;
@@ -180,10 +254,13 @@ static void cpu_step() {
         case 0x12: // LD (DE), A
             break;
         case 0x13: // INC DE
+            cpu.de++;
             break;
         case 0x14: // INC D
+            cpu.d++;
             break;
         case 0x15: // DEC D
+            cpu.d--;
             break;
         case 0x16: // LD D, d8
             break;
@@ -196,10 +273,13 @@ static void cpu_step() {
         case 0x1A: // LD A, (DE)
             break;
         case 0x1B: // DEC DE
+            cpu.de--;
             break;
         case 0x1C: // INC E
+            cpu.e++;
             break;
         case 0x1D: // DEC E
+            cpu.e--;
             break;
         case 0x1E: // LD E, d8
             break;
@@ -208,14 +288,19 @@ static void cpu_step() {
         case 0x20: // JR NZ, r8
             break;
         case 0x21: // LD HL, d16
+            cpu.hl = read_word(cpu.pc);
+            cpu.pc += 2;
             break;
         case 0x22: // LD (HL+), A
             break;
         case 0x23: // INC HL
+            cpu.hl++;
             break;
         case 0x24: // INC H
+            cpu.h++;
             break;
         case 0x25: // DEC H
+            cpu.h--;
             break;
         case 0x26: // LD H, d8
             break;
@@ -228,10 +313,13 @@ static void cpu_step() {
         case 0x2A: // LD A, (HL+)
             break;
         case 0x2B: // DEC HL
+            cpu.hl--;
             break;
         case 0x2C: // INC L
+            cpu.l++;
             break;
         case 0x2D: // DEC L
+            cpu.l--;
             break;
         case 0x2E: // LD L, d8
             break;
@@ -240,10 +328,14 @@ static void cpu_step() {
         case 0x30: // JR NC, r8
             break;
         case 0x31: // LD SP, d16
+            cpu.sp = read_word(cpu.pc);
+            cpu.pc += 2;
             break;
         case 0x32: // LD (HL-), A
+            write_byte(cpu.hl--, cpu.a);
             break;
         case 0x33: // INC SP
+            cpu.sp++;
             break;
         case 0x34: // INC (HL)
             break;
@@ -260,110 +352,155 @@ static void cpu_step() {
         case 0x3A: // LD A, (HL-)
             break;
         case 0x3B: // DEC SP
+            cpu.sp--;
             break;
         case 0x3C: // INC A
+            cpu.a++;
             break;
         case 0x3D: // DEC A
+            cpu.a--;
             break;
         case 0x3E: // LD A, d8
             break;
         case 0x3F: // CCF
             break;
         case 0x40: // LD B, B
+            cpu.b = cpu.b;
             break;
         case 0x41: // LD B, C
+            cpu.b = cpu.c;
             break;
         case 0x42: // LD B, D
+            cpu.b = cpu.d;
             break;
         case 0x43: // LD B, E
+            cpu.b = cpu.e;
             break;
         case 0x44: // LD B, H
+            cpu.b = cpu.h;
             break;
         case 0x45: // LD B, L
+            cpu.b = cpu.l;
             break;
         case 0x46: // LD B, (HL)
             break;
         case 0x47: // LD B, A
+            cpu.b = cpu.a;
             break;
         case 0x48: // LD C, B
+            cpu.c = cpu.b;
             break;
         case 0x49: // LD C, C
+            cpu.c = cpu.c;
             break;
         case 0x4A: // LD C, D
+            cpu.c = cpu.d;
             break;
         case 0x4B: // LD C, E
+            cpu.c = cpu.e;
             break;
         case 0x4C: // LD C, H
+            cpu.c = cpu.h;
             break;
         case 0x4D: // LD C, L
+            cpu.c = cpu.l;
             break;
         case 0x4E: // LD C, (HL)
             break;
         case 0x4F: // LD C, A
+            cpu.c = cpu.a;
             break;
         case 0x50: // LD D, B
+            cpu.d = cpu.b;
             break;
         case 0x51: // LD D, C
+            cpu.d = cpu.c;
             break;
         case 0x52: // LD D, D
+            cpu.d = cpu.d;
             break;
         case 0x53: // LD D, E
+            cpu.d = cpu.e;
             break;
         case 0x54: // LD D, H
+            cpu.d = cpu.h;
             break;
         case 0x55: // LD D, L
+            cpu.d = cpu.l;
             break;
         case 0x56: // LD D, (HL)
             break;
         case 0x57: // LD D, A
+            cpu.d = cpu.a;
             break;
         case 0x58: // LD E, B
+            cpu.e = cpu.b;
             break;
         case 0x59: // LD E, C
+            cpu.e = cpu.c;
             break;
         case 0x5A: // LD E, D
+            cpu.e = cpu.d;
             break;
         case 0x5B: // LD E, E
+            cpu.e = cpu.e;
             break;
         case 0x5C: // LD E, H
+            cpu.e = cpu.h;
             break;
         case 0x5D: // LD E, L
+            cpu.e = cpu.l;
             break;
         case 0x5E: // LD E, (HL)
             break;
         case 0x5F: // LD E, A
+            cpu.e = cpu.a;
             break;
         case 0x60: // LD H, B
+            cpu.h = cpu.b;
             break;
         case 0x61: // LD H, C
+            cpu.h = cpu.c;
             break;
         case 0x62: // LD H, D
+            cpu.h = cpu.d;
             break;
         case 0x63: // LD H, E
+            cpu.h = cpu.e;
             break;
         case 0x64: // LD H, H
+            cpu.h = cpu.h;
             break;
         case 0x65: // LD H, L
+            cpu.h = cpu.l;
             break;
         case 0x66: // LD H, (HL)
             break;
         case 0x67: // LD H, A
+            cpu.h = cpu.a;
             break;
         case 0x68: // LD L, B
+            cpu.l = cpu.b;
             break;
         case 0x69: // LD L, C
+            cpu.l = cpu.c;
             break;
         case 0x6A: // LD L, D
+            cpu.l = cpu.d;
             break;
         case 0x6B: // LD L, E
+            cpu.l = cpu.e;
             break;
         case 0x6C: // LD L, H
+            cpu.l = cpu.h;
             break;
         case 0x6D: // LD L, L
+            cpu.l = cpu.l;
             break;
         case 0x6E: // LD L, (HL)
             break;
         case 0x6F: // LD L, A
+            cpu.l = cpu.a;
             break;
         case 0x70: // LD (HL), B
             break;
@@ -382,20 +519,27 @@ static void cpu_step() {
         case 0x77: // LD (HL), A
             break;
         case 0x78: // LD A, B
+            cpu.a = cpu.b;
             break;
         case 0x79: // LD A, C
+            cpu.a = cpu.c;
             break;
         case 0x7A: // LD A, D
+            cpu.a = cpu.d;
             break;
         case 0x7B: // LD A, E
+            cpu.a = cpu.e;
             break;
         case 0x7C: // LD A, H
+            cpu.a = cpu.h;
             break;
         case 0x7D: // LD A, L
+            cpu.a = cpu.l;
             break;
         case 0x7E: // LD A, (HL)
             break;
         case 0x7F: // LD A, A
+            cpu.a = cpu.a;
             break;
         case 0x80: // ADD A, B
             break;
@@ -492,6 +636,7 @@ static void cpu_step() {
         case 0xAE: // XOR (HL)
             break;
         case 0xAF: // XOR A
+            cpu.a ^= cpu.a;
             break;
         case 0xB0: // OR B
             break;
@@ -548,6 +693,7 @@ static void cpu_step() {
         case 0xCA: // JP Z, a16
             break;
         case 0xCB: // PREFIX CB
+            printl("0xCB instruction is 0x%02x", read_byte(cpu.pc++));
             break;
         case 0xCC: // CALL Z, a16
             break;
@@ -632,8 +778,16 @@ static void cpu_step() {
         case 0xFF: // RST 38H
             break;
         default:
+            printl("UNKNOWN INSTRUCTION AT 0x%04x", cpu.pc);
             break;
     }
+}
+
+static void cpu_dump_state() {
+    printl("CPU:\n Flags:\tZ:%d N:%d H:%d C:%d", GET_FLAG(Z), GET_FLAG(N), GET_FLAG(H), GET_FLAG(C));
+    printl("\tPC:0x%04x SP:0x%04x", cpu.pc, cpu.sp);
+    printl("REGISTERS:\n A:0x%02x B:0x%02x C:0x%02x D:0x%02x E:0x%02x H:0x%02x L:0x%02x F:0x%02x",
+           cpu.a, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.f);
 }
 
 static uint8_t cpu_read_register(uint16_t addr) {
