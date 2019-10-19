@@ -10,8 +10,18 @@ enum {
 
 // I assume that cpu_state is `cpu` object
 #define GET_FLAG(flag)   ((cpu.f >> (flag)) & 0x1)
-#define SET_FLAG(flag)   (cpu.f |= (0x1 << (flag)))
-#define UNSET_FLAG(flag) (cpu.f &= ~(0x1 << (flag))
+
+#define SET_FLAG_IF(cond, flag)   do {                      \
+                    if ((cond)) {                           \
+                        cpu.f |= (0x1 << (flag));           \
+                    }                                       \
+} while(0)
+
+#define UNSET_FLAG_IF(cond, flag) do {                      \
+                    if ((cond)) {                           \
+                        cpu.f &= ~(0x1 << (flag);           \
+                    }                                       \
+} while(0)
 
 static void cpu_dump_state();
 
@@ -71,6 +81,28 @@ typedef struct __cpu_state {
 
     bool boot_rom_enabled;
 } cpu_state;
+
+// this is a table for cycles count for each instruction
+// we might modify cycles counter in cpu_step()
+static int cycles_main_opcodes[256] = {
+        4, 12, 8, 8, 4, 4, 8, 4, 20, 8, 8, 8, 4, 4, 8, 4,
+        4, 12, 8, 8, 4, 4, 8, 4, 12, 8, 8, 8, 4, 4, 8, 4,
+        8, 12, 8, 8, 4, 4, 8, 4, 8, 8, 8, 8, 4, 4, 8, 4,
+        8, 12, 8, 8, 12, 12, 12, 4, 8, 8, 8, 8, 4, 4, 8, 4,
+        4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+        4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+        4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+        8, 8, 8, 8, 8, 8, 4, 8, 4, 4, 4, 4, 4, 4, 8, 4,
+        4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+        4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+        4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+        4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+        8, 12, 12, 16, 12, 16, 8, 16, 8, 16, 12, 4, 12, 24, 8, 16,
+        8, 12, 12, 0, 12, 16, 8, 16, 8, 16, 12, 0, 12, 0, 8, 16,
+        12, 12, 8, 0, 0, 16, 8, 16, 16, 4, 16, 0, 0, 0, 8, 16,
+        12, 12, 8, 4, 0, 16, 8, 16, 12, 8, 16, 4, 0, 0, 8, 16
+};
+static int cycles_0xCB_opcodes[256] = {0};
 
 // CPU STATE
 static cpu_state cpu;
@@ -220,9 +252,8 @@ void cpu_run() {
 
 // TODO: implement setting flags after steps
 static void cpu_step() {
+    int cycles = 0; // how much cycles this step consumes
     uint8_t instruction = read_byte(cpu.pc++);
-    //cpu_dump_state();
-    println("instruction 0x%02x", instruction);
     switch (instruction) {
         case 0x00: // NOP
             break;
