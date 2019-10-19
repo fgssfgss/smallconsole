@@ -13,7 +13,7 @@ void shutdown_common() {
 }
 
 // just a log routine
-void printl(const char *message, ...) {
+void println(const char *message, ...) {
 	va_list arg;
 
 	va_start(arg, message);
@@ -22,4 +22,14 @@ void printl(const char *message, ...) {
 
 	fprintf(log, "\r\n");
 	fflush(log);
+}
+
+void printl(const char *message, ...) {
+    va_list arg;
+
+    va_start(arg, message);
+    vfprintf(log, message, arg);
+    va_end(arg);
+
+    fflush(log);
 }

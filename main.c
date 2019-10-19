@@ -4,11 +4,11 @@
 int main() {
 	init_common();
 
-	printl("EMULATOR INIT");
+    println("EMULATOR INIT");
 	// dump this file from somewhere
     init_cpu();
+    cpu_load_rom("tetris.gb");
     cpu_run();
-    //cpu_load_rom("tetris.gb");
 
 	shutdown_common();
 	return 0;

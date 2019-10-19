@@ -173,7 +173,7 @@ void cpu_load_rom(const char *rom_filename) {
     FILE *rom = fopen(rom_filename, "rb");
     long romsize = 0;
     if (rom == NULL) {
-        printl("Failed to open rom file \'%s\'", rom_filename);
+        println("Failed to open rom file \'%s\'", rom_filename);
         return;
     }
 
@@ -182,7 +182,7 @@ void cpu_load_rom(const char *rom_filename) {
     fseek(rom, 0, SEEK_SET);  /* same as rewind(f); */
 
     if (romsize != 0x8000) {
-        printl("File size is not supported");
+        println("File size is not supported");
         return;
     }
 
@@ -191,11 +191,15 @@ void cpu_load_rom(const char *rom_filename) {
 
     // memory dump
     for (int i = 0, c = 0; i <= 0xFFFF; ++i) {
-        printf("%02x ", read_byte(i));
+        if (c == 0) {
+            printl("0x%04x:\t", i);
+        }
+
+        printl("%02x ", read_byte(i));
 
         if (++c == 16) {
             c = 0;
-            printf("\r\n");
+            println(" ");
         }
     }
 }
@@ -218,7 +222,7 @@ void cpu_run() {
 static void cpu_step() {
     uint8_t instruction = read_byte(cpu.pc++);
     //cpu_dump_state();
-    printl("instruction 0x%02x", instruction);
+    println("instruction 0x%02x", instruction);
     switch (instruction) {
         case 0x00: // NOP
             break;
@@ -704,7 +708,7 @@ static void cpu_step() {
         case 0xCA: // JP Z, a16
             break;
         case 0xCB: // PREFIX CB
-            printl("0xCB instruction is 0x%02x", read_byte(cpu.pc++));
+            println("0xCB instruction is 0x%02x", read_byte(cpu.pc++));
             break;
         case 0xCC: // CALL Z, a16
             break;
@@ -789,16 +793,16 @@ static void cpu_step() {
         case 0xFF: // RST 38H
             break;
         default:
-            printl("UNKNOWN INSTRUCTION AT 0x%04x", cpu.pc);
+            println("UNKNOWN INSTRUCTION AT 0x%04x", cpu.pc);
             break;
     }
 }
 
 static void cpu_dump_state() {
-    printl("CPU:\n Flags:\tZ:%d N:%d H:%d C:%d", GET_FLAG(Z), GET_FLAG(N), GET_FLAG(H), GET_FLAG(C));
-    printl("\tPC:0x%04x SP:0x%04x", cpu.pc, cpu.sp);
-    printl("REGISTERS:\n A:0x%02x B:0x%02x C:0x%02x D:0x%02x E:0x%02x H:0x%02x L:0x%02x F:0x%02x",
-           cpu.a, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.f);
+    println("CPU:\n Flags:\tZ:%d N:%d H:%d C:%d", GET_FLAG(Z), GET_FLAG(N), GET_FLAG(H), GET_FLAG(C));
+    println("\tPC:0x%04x SP:0x%04x", cpu.pc, cpu.sp);
+    println("REGISTERS:\n A:0x%02x B:0x%02x C:0x%02x D:0x%02x E:0x%02x H:0x%02x L:0x%02x F:0x%02x",
+            cpu.a, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.f);
 }
 
 static uint8_t cpu_read_register(uint16_t addr) {

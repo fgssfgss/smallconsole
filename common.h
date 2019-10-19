@@ -12,6 +12,8 @@ void init_common();
 
 void shutdown_common();
 
+void println(const char *message, ...);
+
 void printl(const char *message, ...);
 
 #endif /* _COMMON_H_ */
