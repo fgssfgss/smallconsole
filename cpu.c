@@ -68,18 +68,28 @@ typedef struct __cpu_state {
     };
     uint16_t sp;
     uint16_t pc;
+
+    bool boot_rom_enabled;
 } cpu_state;
 
 // CPU STATE
 static cpu_state cpu;
 
 // ALL KINDS OF MEMORY
-static uint8_t rom0[0x8000]; // 0x0000 -> 0x3FFF ROM bank #0
-// 0x4000 -> 0x7FFF ROM bank #1, just for no mapper roms setup
-static uint8_t vram[0x4000]; // 0x8000 -> 0x9FFF Video RAM
-static uint8_t sram[0x4000]; // 0xA000 -> 0xBFFF switchable RAM
-static uint8_t iram[0x4000]; // 0xC000 -> 0xDFFF internal RAM
-// 0xFF00 -> 0xFFFF - registers, handled via two functions
+static uint8_t rom0[0x8000]; // rom banks 0..1
+static uint8_t vram[0x4000]; // video ram, maybe we need to pass it to ppu, 8 kbytes
+static uint8_t sram[0x4000]; // switchable ram from cartridge
+static uint8_t iram[0x4000]; // internal ram, 8kbytes
+// 0x0000 -> 0x3FFF - ROM bank #0
+// 0x4000 -> 0x7FFF - ROM bank #n, we map to 1 bank just for no mapper roms setup
+// 0x8000 -> 0x9FFF - Video RAM
+// 0xA000 -> 0xBFFF - switchable RAM
+// 0xC000 -> 0xDFFF - internal RAM
+// 0xE000 -> 0xFDFF - mirroring of 0xC000 region
+// 0xFE00 -> 0xFE9F - OAM
+// 0xFF00 -> 0xFF7F - registers, handled via two functions
+// 0xFF80 -> 0xFFFE - high RAM
+// 0xFFFF -> 0xFFFF - interrupt register
 
 static uint8_t boot_rom[256] = {
         0x31, 0xfe, 0xff, 0xaf, 0x21, 0xff, 0x9f, 0x32, 0xcb, 0x7c, 0x20, 0xfb,
@@ -110,6 +120,9 @@ static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr) {
     uint8_t val = 0;
     if (addr >= 0 && addr <= 0x7FFF) {
         val = rom0[addr];
+        if (addr >= 0 && addr <= 0x00FF && cpu.boot_rom_enabled) {
+            val = boot_rom[addr];
+        }
     } else if (addr >= 0x8000 && addr <= 0x9FFF) {
         val = vram[addr % 0x8000];
     } else if (addr >= 0xA000 && addr <= 0xBFFF) {
@@ -127,6 +140,9 @@ static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr) {
 static inline ALWAYS_INLINE void write_byte(uint16_t addr, uint8_t val) {
     if (addr >= 0 && addr <= 0x7FFF) {
         rom0[addr] = val;
+        if (addr >= 0 && addr <= 0x00FF && cpu.boot_rom_enabled) {
+            boot_rom[addr] = val;
+        }
     } else if (addr >= 0x8000 && addr <= 0x9FFF) {
         vram[addr % 0x8000] = val;
     } else if (addr >= 0xA000 && addr <= 0xBFFF) {
@@ -187,12 +203,7 @@ void cpu_load_rom(const char *rom_filename) {
 void init_cpu() {
     cpu.pc = 0x0000;
     cpu.sp = 0x0000;
-
-    // copy boot rom to rom0 first page
-    // we will override it when rom will be loaded after it
-    for (int i = 0; i <= 0xFF; ++i) {
-        rom0[i] = boot_rom[i];
-    }
+    cpu.boot_rom_enabled = 1;
 }
 
 void cpu_run() {
@@ -206,7 +217,7 @@ void cpu_run() {
 // TODO: implement setting flags after steps
 static void cpu_step() {
     uint8_t instruction = read_byte(cpu.pc++);
-    cpu_dump_state();
+    //cpu_dump_state();
     printl("instruction 0x%02x", instruction);
     switch (instruction) {
         case 0x00: // NOP
