@@ -392,6 +392,7 @@ static void cpu_step() {
             cpu.pc += 2;
             break;
         case 0x02: // LD (BC), A
+            write_byte(cpu.bc, cpu.a);
             break;
         case 0x03: // INC BC
             cpu.bc++;
@@ -409,10 +410,13 @@ static void cpu_step() {
         case 0x07: // RLCA
             break;
         case 0x08: // LD (a16), SP
+            write_word(read_word(cpu.pc), cpu.sp);
+            cpu.pc += 2;
             break;
         case 0x09: // ADD HL, BC
             break;
         case 0x0A: // LD A, (BC)
+            cpu.a = read_byte(cpu.bc);
             break;
         case 0x0B: // DEC BC
             cpu.bc--;
@@ -436,6 +440,7 @@ static void cpu_step() {
             cpu.pc += 2;
             break;
         case 0x12: // LD (DE), A
+            write_byte(cpu.de, cpu.a);
             break;
         case 0x13: // INC DE
             cpu.de++;
@@ -457,6 +462,7 @@ static void cpu_step() {
         case 0x19: // ADD HL, DE
             break;
         case 0x1A: // LD A, (DE)
+            cpu.a = read_byte(cpu.de);
             break;
         case 0x1B: // DEC DE
             cpu.de--;
@@ -577,6 +583,7 @@ static void cpu_step() {
             cpu.b = cpu.l;
             break;
         case 0x46: // LD B, (HL)
+            cpu.b = read_byte(cpu.hl);
             break;
         case 0x47: // LD B, A
             cpu.b = cpu.a;
@@ -600,6 +607,7 @@ static void cpu_step() {
             cpu.c = cpu.l;
             break;
         case 0x4E: // LD C, (HL)
+            cpu.c = read_byte(cpu.hl);
             break;
         case 0x4F: // LD C, A
             cpu.c = cpu.a;
@@ -623,6 +631,7 @@ static void cpu_step() {
             cpu.d = cpu.l;
             break;
         case 0x56: // LD D, (HL)
+            cpu.d = read_byte(cpu.hl);
             break;
         case 0x57: // LD D, A
             cpu.d = cpu.a;
@@ -646,6 +655,7 @@ static void cpu_step() {
             cpu.e = cpu.l;
             break;
         case 0x5E: // LD E, (HL)
+            cpu.e = read_byte(cpu.hl);
             break;
         case 0x5F: // LD E, A
             cpu.e = cpu.a;
@@ -669,6 +679,7 @@ static void cpu_step() {
             cpu.h = cpu.l;
             break;
         case 0x66: // LD H, (HL)
+            cpu.h = read_byte(cpu.hl);
             break;
         case 0x67: // LD H, A
             cpu.h = cpu.a;
@@ -692,25 +703,33 @@ static void cpu_step() {
             cpu.l = cpu.l;
             break;
         case 0x6E: // LD L, (HL)
+            cpu.l = read_byte(cpu.hl);
             break;
         case 0x6F: // LD L, A
             cpu.l = cpu.a;
             break;
         case 0x70: // LD (HL), B
+            write_byte(cpu.hl, cpu.b);
             break;
         case 0x71: // LD (HL), C
+            write_byte(cpu.hl, cpu.c);
             break;
         case 0x72: // LD (HL), D
+            write_byte(cpu.hl, cpu.d);
             break;
         case 0x73: // LD (HL), E
+            write_byte(cpu.hl, cpu.e);
             break;
         case 0x74: // LD (HL), H
+            write_byte(cpu.hl, cpu.h);
             break;
         case 0x75: // LD (HL), L
+            write_byte(cpu.hl, cpu.l);
             break;
         case 0x76: // HALT
             break;
         case 0x77: // LD (HL), A
+            write_byte(cpu.hl, cpu.a);
             break;
         case 0x78: // LD A, B
             cpu.a = cpu.b;
@@ -731,6 +750,7 @@ static void cpu_step() {
             cpu.a = cpu.l;
             break;
         case 0x7E: // LD A, (HL)
+            cpu.a = read_byte(cpu.hl);
             break;
         case 0x7F: // LD A, A
             cpu.a = cpu.a;
@@ -846,20 +866,27 @@ static void cpu_step() {
             cpu.a ^= cpu.a;
             break;
         case 0xB0: // OR B
+            cpu.a = cpu.a | cpu.b;
             break;
         case 0xB1: // OR C
+            cpu.a = cpu.a | cpu.c;
             break;
         case 0xB2: // OR D
+            cpu.a = cpu.a | cpu.d;
             break;
         case 0xB3: // OR E
+            cpu.a = cpu.a | cpu.e;
             break;
         case 0xB4: // OR H
+            cpu.a = cpu.a | cpu.h;
             break;
         case 0xB5: // OR L
+            cpu.a = cpu.a | cpu.l;
             break;
         case 0xB6: // OR (HL)
             break;
         case 0xB7: // OR A
+            cpu.a |= cpu.a;
             break;
         case 0xB8: // CP B
             break;
