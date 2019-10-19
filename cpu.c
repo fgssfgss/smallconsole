@@ -145,6 +145,7 @@ static uint8_t rom0[0x8000]; // rom banks 0..1
 static uint8_t vram[0x4000]; // video ram, maybe we need to pass it to ppu, 8 kbytes
 static uint8_t sram[0x4000]; // switchable ram from cartridge
 static uint8_t iram[0x4000]; // internal ram, 8kbytes
+static uint8_t zeropage[0x7F]; // high mem
 // 0x0000 -> 0x3FFF - ROM bank #0
 // 0x4000 -> 0x7FFF - ROM bank #n, we map to 1 bank just for no mapper roms setup
 // 0x8000 -> 0x9FFF - Video RAM
@@ -152,8 +153,9 @@ static uint8_t iram[0x4000]; // internal ram, 8kbytes
 // 0xC000 -> 0xDFFF - internal RAM
 // 0xE000 -> 0xFDFF - mirroring of 0xC000 region
 // 0xFE00 -> 0xFE9F - OAM
+// 0xFEA0 -> 0xFEFF - unusable memory area
 // 0xFF00 -> 0xFF7F - registers, handled via two functions
-// 0xFF80 -> 0xFFFE - high RAM
+// 0xFF80 -> 0xFFFE - high RAM or zeropage
 // 0xFFFF -> 0xFFFF - interrupt register
 
 static uint8_t boot_rom[256] = {
@@ -196,8 +198,16 @@ static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr) {
         val = iram[addr % 0xC000];
     } else if (addr >= 0xE000 && addr <= 0xFDFF) {
         val = iram[addr % 0xE000];
-    } else {
+    } else if (addr >= 0xFE00 && addr <= 0xFE9F) {
+        // oam memory
+    } else if (addr >= 0xFEA0 && addr <= 0xFEFF) {
+        // unusable memory
+    } else if (addr >= 0xFF00 && addr <= 0xFF7F) {
         val = cpu_read_register(addr);
+    } else if (addr >= 0xFF80 && addr <= 0xFFFE) {
+        val = zeropage[addr % 0xFF80];
+    } else {
+        // interrupt register
     }
     return val;
 }
@@ -216,8 +226,16 @@ static inline ALWAYS_INLINE void write_byte(uint16_t addr, uint8_t val) {
         iram[addr % 0xC000] = val;
     } else if (addr >= 0xE000 && addr <= 0xFDFF) {
         iram[addr % 0xE000] = val;
-    } else {
+    } else if (addr >= 0xFE00 && addr <= 0xFE9F) {
+        // oam memory
+    } else if (addr >= 0xFEA0 && addr <= 0xFEFF) {
+        // unusable memory
+    } else if (addr >= 0xFF00 && addr <= 0xFF7F) {
         cpu_write_register(addr, val);
+    } else if (addr >= 0xFF80 && addr <= 0xFFFE) {
+        zeropage[addr % 0xFF80] = val;
+    } else {
+        // interrupt register
     }
 }
 
