@@ -1,17 +1,33 @@
 #include "common.h"
 #include "cpu.h"
 
-enum {
+enum flags {
     C = 4,
     H = 5,
     N = 6,
     Z = 7
 };
 
+enum registers {
+    REG_B = 0,
+    REG_C,
+    REG_D,
+    REG_E,
+    REG_H,
+    REG_L,
+    REG_HL,
+    REG_A
+};
+
+static enum registers map_register(uint8_t opcode) {
+    enum registers reg_code = (opcode & 0xF) % 8;
+    return reg_code;
+}
+
 // I assume that cpu_state is `cpu` object
 #define GET_FLAG(flag)   ((cpu.f >> (flag)) & 0x1)
 
-#define SET_FLAG_IF(cond, flag)   do {                      \
+#define SET_FLAG_IF(cond, flag) do {                        \
                     if ((cond)) {                           \
                         cpu.f |= (0x1 << (flag));           \
                     }                                       \
@@ -267,14 +283,95 @@ void cpu_run() {
     cpu_step();
 }
 
+
+static void cpu_prefix_cb_handle(int *cycles) {
+    uint8_t instruction = read_byte(cpu.pc++);
+    *cycles += cycles_0xCB_opcodes[instruction];
+    enum registers reg = map_register(instruction);
+    // now we should mask register bits in instruction
+    instruction &= 0xF8;
+    println("Instruction is 0x%02x, cycles %d, affected reg %d", instruction, *cycles, reg);
+
+    switch(instruction) {
+        case 0x00: // RLC
+            break;
+        case 0x08: // RRC
+            break;
+        case 0x10: // RL
+            break;
+        case 0x18: // RR
+            break;
+        case 0x20: // SLA
+            break;
+        case 0x28: // SRA
+            break;
+        case 0x30: // SWAP
+            break;
+        case 0x38: // SRL
+            break;
+        case 0x40: // BIT 0
+            break;
+        case 0x48: // BIT 1
+            break;
+        case 0x50: // BIT 2
+            break;
+        case 0x58: // BIT 3
+            break;
+        case 0x60: // BIT 4
+            break;
+        case 0x68: // BIT 5
+            break;
+        case 0x70: // BIT 6
+            break;
+        case 0x78: // BIT 7
+            break;
+        case 0x80: // RES 0
+            break;
+        case 0x88: // RES 1
+            break;
+        case 0x90: // RES 2
+            break;
+        case 0x98: // RES 3
+            break;
+        case 0xA0: // RES 4
+            break;
+        case 0xA8: // RES 5
+            break;
+        case 0xB0: // RES 6
+            break;
+        case 0xB8: // RES 7
+            break;
+        case 0xC0: // SET 0
+            break;
+        case 0xC8: // SET 1
+            break;
+        case 0xD0: // SET 2
+            break;
+        case 0xD8: // SET 3
+            break;
+        case 0xE0: // SET 4
+            break;
+        case 0xE8: // SET 5
+            break;
+        case 0xF0: // SET 6
+            break;
+        case 0xF8: // SET 7
+            break;
+        default:
+            break;
+    }
+}
+
 // TODO: implement setting flags after steps
 static void cpu_step() {
-    int cycles = 0; // how much cycles this step consumes
     uint8_t instruction = read_byte(cpu.pc++);
+    int cycles = cycles_main_opcodes[instruction];
     switch (instruction) {
         case 0x00: // NOP
             break;
         case 0x01: // LD BC, d16
+            cpu.bc = read_word(cpu.pc);
+            cpu.pc += 2;
             break;
         case 0x02: // LD (BC), A
             break;
@@ -288,6 +385,8 @@ static void cpu_step() {
             cpu.b--;
             break;
         case 0x06: // LD B, d8
+            cpu.b = read_byte(cpu.pc);
+            cpu.pc++;
             break;
         case 0x07: // RLCA
             break;
@@ -307,12 +406,16 @@ static void cpu_step() {
             cpu.c--;
             break;
         case 0x0E: // LD C, d8
+            cpu.c = read_byte(cpu.pc);
+            cpu.pc++;
             break;
         case 0x0F: // RRCA
             break;
         case 0x10: // STOP
             break;
         case 0x11: // LD DE, d16
+            cpu.de = read_word(cpu.pc);
+            cpu.pc += 2;
             break;
         case 0x12: // LD (DE), A
             break;
@@ -326,6 +429,8 @@ static void cpu_step() {
             cpu.d--;
             break;
         case 0x16: // LD D, d8
+            cpu.d = read_byte(cpu.pc);
+            cpu.pc++;
             break;
         case 0x17: // RLA
             break;
@@ -345,6 +450,8 @@ static void cpu_step() {
             cpu.e--;
             break;
         case 0x1E: // LD E, d8
+            cpu.e = read_byte(cpu.pc);
+            cpu.pc++;
             break;
         case 0x1F: // RRA
             break;
@@ -366,6 +473,8 @@ static void cpu_step() {
             cpu.h--;
             break;
         case 0x26: // LD H, d8
+            cpu.h = read_byte(cpu.pc);
+            cpu.pc++;
             break;
         case 0x27: // DAA
             break;
@@ -385,6 +494,8 @@ static void cpu_step() {
             cpu.l--;
             break;
         case 0x2E: // LD L, d8
+            cpu.l = read_byte(cpu.pc);
+            cpu.pc++;
             break;
         case 0x2F: // CPL
             break;
@@ -424,6 +535,8 @@ static void cpu_step() {
             cpu.a--;
             break;
         case 0x3E: // LD A, d8
+            cpu.a = read_byte(cpu.pc);
+            cpu.pc++;
             break;
         case 0x3F: // CCF
             break;
@@ -669,32 +782,45 @@ static void cpu_step() {
         case 0x9F: // SBC A, A
             break;
         case 0xA0: // AND B
+            cpu.a = cpu.a & cpu.b;
             break;
         case 0xA1: // AND C
+            cpu.a = cpu.a & cpu.c;
             break;
         case 0xA2: // AND D
+            cpu.a = cpu.a & cpu.d;
             break;
         case 0xA3: // AND E
+            cpu.a = cpu.a & cpu.e;
             break;
         case 0xA4: // AND H
+            cpu.a = cpu.a & cpu.h;
             break;
         case 0xA5: // AND L
+            cpu.a = cpu.a & cpu.l;
             break;
         case 0xA6: // AND (HL)
             break;
         case 0xA7: // AND A
+            cpu.a &= cpu.a;
             break;
         case 0xA8: // XOR B
+            cpu.a = cpu.a ^ cpu.b;
             break;
         case 0xA9: // XOR C
+            cpu.a = cpu.a ^ cpu.c;
             break;
         case 0xAA: // XOR D
+            cpu.a = cpu.a ^ cpu.d;
             break;
         case 0xAB: // XOR E
+            cpu.a = cpu.a ^ cpu.e;
             break;
         case 0xAC: // XOR H
+            cpu.a = cpu.a ^ cpu.h;
             break;
         case 0xAD: // XOR L
+            cpu.a = cpu.a ^ cpu.l;
             break;
         case 0xAE: // XOR (HL)
             break;
@@ -756,7 +882,7 @@ static void cpu_step() {
         case 0xCA: // JP Z, a16
             break;
         case 0xCB: // PREFIX CB
-            println("0xCB instruction is 0x%02x", read_byte(cpu.pc++));
+            cpu_prefix_cb_handle(&cycles);
             break;
         case 0xCC: // CALL Z, a16
             break;
@@ -814,7 +940,7 @@ static void cpu_step() {
             break;
         case 0xEF: // RST 28H
             break;
-        case 0xF0: //LDH A, (a8)
+        case 0xF0: // LDH A, (a8)
             break;
         case 0xF1: // POP AF
             break;
@@ -844,6 +970,8 @@ static void cpu_step() {
             println("UNKNOWN INSTRUCTION AT 0x%04x", cpu.pc);
             break;
     }
+
+    cpu_dump_state();
 }
 
 static void cpu_dump_state() {
