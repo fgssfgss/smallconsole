@@ -507,13 +507,13 @@ static void cpu_prefix_cb_handle(int *cycles) {
 }
 
 static inline ALWAYS_INLINE void cpu_opcode_daa() {
-    uint8_t n_flag = GET_FLAG(N);
+    bool n_flag = GET_FLAG(N);
     
     if ((cpu.a & 0xF) > 0x9 || GET_FLAG(H)) {
         cpu.a += (n_flag ? -0x6 : 0x6);   
     }
     
-    uint8_t set_carry_flag = 0;
+    bool set_carry_flag = 0;
     if ((cpu.a & 0xF0) > 0x90 || GET_FLAG(C)) {
         cpu.a += (n_flag ? -0x60 : 0x60);
         set_carry_flag = 1;
