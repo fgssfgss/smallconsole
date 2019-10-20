@@ -27,17 +27,14 @@ static enum registers map_register(uint8_t opcode) {
 // I assume that cpu_state is `cpu` object
 #define GET_FLAG(flag)   ((cpu.f >> (flag)) & 0x1)
 
-#define SET_FLAG_IF(cond, flag) do {                        \
-                    if ((cond)) {                           \
-                        cpu.f |= (0x1 << (flag));           \
-                    }                                       \
-} while(0)
+#define SET_FLAGS(zflag, nflag, hflag, cflag) \
+                    ((!!(zflag) << Z) | (!!(nflag) << N) | (!!(hflag) << H) | (!!(cflag) << C) | 0)
 
-#define UNSET_FLAG_IF(cond, flag) do {                      \
-                    if ((cond)) {                           \
-                        cpu.f &= ~(0x1 << (flag);           \
-                    }                                       \
-} while(0)
+// TODO: fixme: H flag set
+#define SET_INC_FLAGS(data) (cpu.f = SET_FLAGS(data == 0, 0, (((data & 0xF) + ((data-1) & 0xF)) > 0xF), GET_FLAG(C)))
+#define SET_DEC_FLAGS(data) (cpu.f = SET_FLAGS(data == 0, 1, (((data & 0xF) + ((data+1) & 0xF)) > 0xF), GET_FLAG(C)))
+#define SET_AND_FLAGS() (cpu.f = SET_FLAGS(cpu.a == 0, 0, 1, 0))
+#define SET_xOR_FLAGS() (cpu.f = SET_FLAGS(cpu.a == 0, 0, 0, 0))
 
 static void cpu_dump_state();
 
@@ -299,6 +296,8 @@ void cpu_run() {
     cpu_step();
     cpu_step();
     cpu_step();
+    cpu_step();
+    cpu_step();
 }
 
 
@@ -384,6 +383,7 @@ static void cpu_prefix_cb_handle(int *cycles) {
 static void cpu_step() {
     uint8_t instruction = read_byte(cpu.pc++);
     int cycles = cycles_main_opcodes[instruction];
+    println("instr 0x%02x cycles %d", instruction, cycles);
     switch (instruction) {
         case 0x00: // NOP
             break;
@@ -399,9 +399,11 @@ static void cpu_step() {
             break;
         case 0x04: // INC B
             cpu.b++;
+            SET_INC_FLAGS(cpu.b);
             break;
         case 0x05: // DEC B
             cpu.b--;
+            SET_DEC_FLAGS(cpu.b);
             break;
         case 0x06: // LD B, d8
             cpu.b = read_byte(cpu.pc);
@@ -423,9 +425,11 @@ static void cpu_step() {
             break;
         case 0x0C: // INC C
             cpu.c++;
+            SET_INC_FLAGS(cpu.c);
             break;
         case 0x0D: // DEC C
             cpu.c--;
+            SET_DEC_FLAGS(cpu.c);
             break;
         case 0x0E: // LD C, d8
             cpu.c = read_byte(cpu.pc);
@@ -447,9 +451,11 @@ static void cpu_step() {
             break;
         case 0x14: // INC D
             cpu.d++;
+            SET_INC_FLAGS(cpu.d);
             break;
         case 0x15: // DEC D
             cpu.d--;
+            SET_DEC_FLAGS(cpu.d);
             break;
         case 0x16: // LD D, d8
             cpu.d = read_byte(cpu.pc);
@@ -469,9 +475,11 @@ static void cpu_step() {
             break;
         case 0x1C: // INC E
             cpu.e++;
+            SET_INC_FLAGS(cpu.e);
             break;
         case 0x1D: // DEC E
             cpu.e--;
+            SET_DEC_FLAGS(cpu.e);
             break;
         case 0x1E: // LD E, d8
             cpu.e = read_byte(cpu.pc);
@@ -492,9 +500,11 @@ static void cpu_step() {
             break;
         case 0x24: // INC H
             cpu.h++;
+            SET_INC_FLAGS(cpu.h);
             break;
         case 0x25: // DEC H
             cpu.h--;
+            SET_DEC_FLAGS(cpu.h);
             break;
         case 0x26: // LD H, d8
             cpu.h = read_byte(cpu.pc);
@@ -513,9 +523,11 @@ static void cpu_step() {
             break;
         case 0x2C: // INC L
             cpu.l++;
+            SET_INC_FLAGS(cpu.l);
             break;
         case 0x2D: // DEC L
             cpu.l--;
+            SET_DEC_FLAGS(cpu.l);
             break;
         case 0x2E: // LD L, d8
             cpu.l = read_byte(cpu.pc);
@@ -536,8 +548,10 @@ static void cpu_step() {
             cpu.sp++;
             break;
         case 0x34: // INC (HL)
+            // todo implement me
             break;
         case 0x35: // DEC (HL)
+            // todo implement me
             break;
         case 0x36: // LD (HL), d8
             break;
@@ -554,9 +568,11 @@ static void cpu_step() {
             break;
         case 0x3C: // INC A
             cpu.a++;
+            SET_INC_FLAGS(cpu.a);
             break;
         case 0x3D: // DEC A
             cpu.a--;
+            SET_DEC_FLAGS(cpu.a);
             break;
         case 0x3E: // LD A, d8
             cpu.a = read_byte(cpu.pc);
@@ -821,72 +837,99 @@ static void cpu_step() {
             break;
         case 0xA0: // AND B
             cpu.a = cpu.a & cpu.b;
+            SET_AND_FLAGS();
             break;
         case 0xA1: // AND C
             cpu.a = cpu.a & cpu.c;
+            SET_AND_FLAGS();
             break;
         case 0xA2: // AND D
             cpu.a = cpu.a & cpu.d;
+            SET_AND_FLAGS();
             break;
         case 0xA3: // AND E
             cpu.a = cpu.a & cpu.e;
+            SET_AND_FLAGS();
             break;
         case 0xA4: // AND H
             cpu.a = cpu.a & cpu.h;
+            SET_AND_FLAGS();
             break;
         case 0xA5: // AND L
             cpu.a = cpu.a & cpu.l;
+            SET_AND_FLAGS();
             break;
         case 0xA6: // AND (HL)
+            // todo implement me
+            SET_AND_FLAGS();
             break;
         case 0xA7: // AND A
             cpu.a &= cpu.a;
+            SET_AND_FLAGS();
             break;
         case 0xA8: // XOR B
             cpu.a = cpu.a ^ cpu.b;
+            SET_xOR_FLAGS();
             break;
         case 0xA9: // XOR C
             cpu.a = cpu.a ^ cpu.c;
+            SET_xOR_FLAGS();
             break;
         case 0xAA: // XOR D
             cpu.a = cpu.a ^ cpu.d;
+            SET_xOR_FLAGS();
             break;
         case 0xAB: // XOR E
             cpu.a = cpu.a ^ cpu.e;
+            SET_xOR_FLAGS();
             break;
         case 0xAC: // XOR H
             cpu.a = cpu.a ^ cpu.h;
+            SET_xOR_FLAGS();
             break;
         case 0xAD: // XOR L
             cpu.a = cpu.a ^ cpu.l;
+            SET_xOR_FLAGS();
             break;
         case 0xAE: // XOR (HL)
+            // todo implement me
+            SET_xOR_FLAGS();
             break;
         case 0xAF: // XOR A
             cpu.a ^= cpu.a;
+            SET_xOR_FLAGS();
             break;
         case 0xB0: // OR B
             cpu.a = cpu.a | cpu.b;
+            SET_xOR_FLAGS();
             break;
         case 0xB1: // OR C
             cpu.a = cpu.a | cpu.c;
+            SET_xOR_FLAGS();
             break;
         case 0xB2: // OR D
             cpu.a = cpu.a | cpu.d;
+            SET_xOR_FLAGS();
             break;
         case 0xB3: // OR E
             cpu.a = cpu.a | cpu.e;
+            SET_xOR_FLAGS();
             break;
         case 0xB4: // OR H
             cpu.a = cpu.a | cpu.h;
+            SET_xOR_FLAGS();
             break;
         case 0xB5: // OR L
             cpu.a = cpu.a | cpu.l;
+            SET_xOR_FLAGS();
             break;
         case 0xB6: // OR (HL)
+            // todo implement me
+            SET_xOR_FLAGS();
             break;
         case 0xB7: // OR A
             cpu.a |= cpu.a;
+            SET_xOR_FLAGS();
             break;
         case 0xB8: // CP B
             break;
@@ -972,6 +1015,7 @@ static void cpu_step() {
         case 0xE5: // PUSH HL
             break;
         case 0xE6: // AND d8
+            SET_AND_FLAGS();
             break;
         case 0xE7: // RST 20H
             break;
@@ -982,6 +1026,7 @@ static void cpu_step() {
         case 0xEA: // LD (a16), A
             break;
         case 0xEE: // XOR d8
+            SET_xOR_FLAGS();
             break;
         case 0xEF: // RST 28H
             break;
