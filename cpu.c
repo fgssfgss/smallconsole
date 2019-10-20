@@ -506,6 +506,22 @@ static void cpu_prefix_cb_handle(int *cycles) {
     }
 }
 
+static inline ALWAYS_INLINE void cpu_opcode_daa() {
+    uint8_t n_flag = GET_FLAG(N);
+    
+    if ((cpu.a & 0xF) > 0x9 || GET_FLAG(H)) {
+        cpu.a += (n_flag ? -0x6 : 0x6);   
+    }
+    
+    uint8_t set_carry_flag = 0;
+    if ((cpu.a & 0xF0) > 0x90 || GET_FLAG(C)) {
+        cpu.a += (n_flag ? -0x60 : 0x60);
+        set_carry_flag = 1;
+    }
+
+    cpu.f = SET_FLAGS(cpu.a == 0, n_flag, 0, set_carry_flag || GET_FLAG(C));
+}
+
 // TODO: implement setting flags after steps
 static void cpu_step() {
     uint8_t instruction = read_byte(cpu.pc++);
@@ -644,15 +660,9 @@ static void cpu_step() {
             cpu.h = read_byte(cpu.pc);
             cpu.pc++;
             break;
-        case 0x27: { // DAA
-                uint16_t reg_a = cpu.a;
-                uint8_t n_flag = GET_FLAG(N);
-                if ((reg_a & 0xF) > 0x9 || GET_FLAG(H)) reg_a += n_flag ? -0x6 : 0x6;
-                if ((reg_a & 0xF0) > 0x90 || GET_FLAG(C)) reg_a += n_flag ? -0x60 : 0x60;
-                cpu.a = reg_a & 0xFF;
-                cpu.f = SET_FLAGS(reg_a == 0, n_flag, 0, (reg_a >= 0x100) | GET_FLAG(C));
-                break;
-            }
+        case 0x27: // DAA
+            cpu_opcode_daa();
+            break;
         case 0x28: // JR Z, r8
             if (GET_FLAG(Z)) {
                 cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc);
