@@ -506,6 +506,22 @@ static void cpu_prefix_cb_handle(int *cycles) {
     }
 }
 
+static inline ALWAYS_INLINE void cpu_opcode_daa() {
+    bool n_flag = GET_FLAG(N);
+    
+    if ((cpu.a & 0xF) > 0x9 || GET_FLAG(H)) {
+        cpu.a += (n_flag ? -0x6 : 0x6);   
+    }
+    
+    bool set_carry_flag = 0;
+    if ((cpu.a & 0xF0) > 0x90 || GET_FLAG(C)) {
+        cpu.a += (n_flag ? -0x60 : 0x60);
+        set_carry_flag = 1;
+    }
+
+    cpu.f = SET_FLAGS(cpu.a == 0, n_flag, 0, set_carry_flag || GET_FLAG(C));
+}
+
 // TODO: implement setting flags after steps
 static void cpu_step() {
     uint8_t instruction = read_byte(cpu.pc++);
@@ -645,6 +661,7 @@ static void cpu_step() {
             cpu.pc++;
             break;
         case 0x27: // DAA
+            cpu_opcode_daa();
             break;
         case 0x28: // JR Z, r8
             if (GET_FLAG(Z)) {
