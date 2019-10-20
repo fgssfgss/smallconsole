@@ -464,6 +464,8 @@ static void cpu_step() {
         case 0x17: // RLA
             break;
         case 0x18: // JR r8
+            cpu.pc += read_byte(cpu.pc);
+            cpu.pc++;
             break;
         case 0x19: // ADD HL, DE
             break;
@@ -488,6 +490,10 @@ static void cpu_step() {
         case 0x1F: // RRA
             break;
         case 0x20: // JR NZ, r8
+            if (!GET_FLAG(Z)) {
+                cpu.pc += read_byte(cpu.pc);
+            }
+            cpu.pc++;
             break;
         case 0x21: // LD HL, d16
             cpu.hl = read_word(cpu.pc);
@@ -513,6 +519,10 @@ static void cpu_step() {
         case 0x27: // DAA
             break;
         case 0x28: // JR Z, r8
+            if (GET_FLAG(Z)) {
+                cpu.pc += read_byte(cpu.pc);
+            }
+            cpu.pc++;
             break;
         case 0x29: // ADD HL, HL
             break;
@@ -536,6 +546,10 @@ static void cpu_step() {
         case 0x2F: // CPL
             break;
         case 0x30: // JR NC, r8
+            if (!GET_FLAG(C)) {
+                cpu.pc += read_byte(cpu.pc);
+            }
+            cpu.pc++;
             break;
         case 0x31: // LD SP, d16
             cpu.sp = read_word(cpu.pc);
@@ -558,6 +572,10 @@ static void cpu_step() {
         case 0x37: // SCF
             break;
         case 0x38: // JR C, r8
+            if (GET_FLAG(C)) {
+                cpu.pc += read_byte(cpu.pc);
+            }
+            cpu.pc++;
             break;
         case 0x39: // ADD HL, SP
             break;
