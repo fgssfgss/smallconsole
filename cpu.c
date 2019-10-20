@@ -516,8 +516,15 @@ static void cpu_step() {
             cpu.h = read_byte(cpu.pc);
             cpu.pc++;
             break;
-        case 0x27: // DAA
-            break;
+        case 0x27: { // DAA
+                uint16_t reg_a = cpu.a;
+                uint8_t n_flag = GET_FLAG(N);
+                if ((reg_a & 0xF) > 0x9 || GET_FLAG(H)) reg_a += n_flag ? -0x6 : 0x6;
+                if ((reg_a & 0xF0) > 0x90 || GET_FLAG(C)) reg_a += n_flag ? -0x60 : 0x60;
+                cpu.a = reg_a & 0xFF;
+                cpu.f = SET_FLAGS(reg_a == 0, n_flag, 0, (reg_a >= 0x100) | GET_FLAG(C));
+                break;
+            }
         case 0x28: // JR Z, r8
             if (GET_FLAG(Z)) {
                 cpu.pc += read_byte(cpu.pc);
