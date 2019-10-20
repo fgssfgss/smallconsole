@@ -304,11 +304,11 @@ void init_cpu() {
 void cpu_run() {
     cpu.stop = false;
 
-    while(cpu.pc != 0x0027) {
+    while(cpu.pc != 0x0099) {
         cpu_step();
     }
 
-    cpu_print_mem(0x8000, 0x9FFF);
+    //cpu_print_mem(0x8000, 0x9FFF);
 }
 
 // TODO: refactor me
@@ -510,7 +510,7 @@ static void cpu_prefix_cb_handle(int *cycles) {
 static void cpu_step() {
     uint8_t instruction = read_byte(cpu.pc++);
     int cycles = cycles_main_opcodes[instruction];
-    println("instr 0x%02x cycles %d", instruction, cycles);
+    println("instr 0x%02x cycles %d, possible args %d(0x%02x), %d(0x%02x)", instruction, cycles, (int8_t)read_byte(cpu.pc), read_byte(cpu.pc), (int8_t)read_byte(cpu.pc + 1), read_byte(cpu.pc + 1));
     switch (instruction) {
         case 0x00: // NOP
             break;
@@ -591,7 +591,7 @@ static void cpu_step() {
         case 0x17: // RLA
             break;
         case 0x18: // JR r8
-            cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc);
+            cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc) + 1;
             break;
         case 0x19: // ADD HL, DE
             break;
@@ -617,7 +617,7 @@ static void cpu_step() {
             break;
         case 0x20: // JR NZ, r8
             if (!GET_FLAG(Z)) {
-                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc);
+                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc) + 1;
             } else {
                 cpu.pc++;
             }
@@ -648,7 +648,7 @@ static void cpu_step() {
             break;
         case 0x28: // JR Z, r8
             if (GET_FLAG(Z)) {
-                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc);
+                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc) + 1;
             } else {
                 cpu.pc++;
             }
@@ -677,7 +677,7 @@ static void cpu_step() {
             break;
         case 0x30: // JR NC, r8
             if (!GET_FLAG(C)) {
-                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc);
+                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc) + 1;
             } else {
                 cpu.pc++;
             }
@@ -708,7 +708,7 @@ static void cpu_step() {
             break;
         case 0x38: // JR C, r8
             if (GET_FLAG(C)) {
-                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc);
+                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc) + 1;
             } else {
                 cpu.pc++;
             }
@@ -1103,8 +1103,14 @@ static void cpu_step() {
         case 0xBF: // CP A
             break;
         case 0xC0: // RET NZ
+            if (!GET_FLAG(Z)) {
+                cpu.pc = read_word(cpu.sp);
+                cpu.sp += 2;
+            }
             break;
         case 0xC1: // POP BC
+            cpu.bc = read_word(cpu.sp);
+            cpu.sp += 2;
             break;
         case 0xC2: // JP NZ, a16
             if (!GET_FLAG(Z)) {
@@ -1117,16 +1123,31 @@ static void cpu_step() {
             cpu.pc = read_word(cpu.pc);
             break;
         case 0xC4: // CALL NZ, a16
+            if (!GET_FLAG(Z)) {
+                cpu.sp -= 2;
+                write_word(cpu.sp, cpu.pc + 2);
+                cpu.pc = read_word(cpu.pc);
+            } else {
+                cpu.pc += 2;
+            }
             break;
         case 0xC5: // PUSH BC
+            cpu.sp -= 2;
+            write_word(cpu.sp, cpu.bc);
             break;
         case 0xC6: // ADD A, d8
             break;
         case 0xC7: // RST 00H
             break;
         case 0xC8: // RET Z
+            if (GET_FLAG(Z)) {
+                cpu.pc = read_word(cpu.sp);
+                cpu.sp += 2;
+            }
             break;
         case 0xC9: // RET
+            cpu.pc = read_word(cpu.sp);
+            cpu.sp += 2;
             break;
         case 0xCA: // JP Z, a16
             if (GET_FLAG(Z)) {
@@ -1139,16 +1160,32 @@ static void cpu_step() {
             cpu_prefix_cb_handle(&cycles);
             break;
         case 0xCC: // CALL Z, a16
+            if (GET_FLAG(Z)) {
+                cpu.sp -= 2;
+                write_word(cpu.sp, cpu.pc + 2);
+                cpu.pc = read_word(cpu.pc);
+            } else {
+                cpu.pc += 2;
+            }
             break;
         case 0xCD: // CALL a16
+            cpu.sp -= 2;
+            write_word(cpu.sp, cpu.pc + 2);
+            cpu.pc = read_word(cpu.pc);
             break;
         case 0xCE: // ADC A, d8
             break;
         case 0xCF: // RST 08H
             break;
         case 0xD0: // RET NC
+            if (!GET_FLAG(C)) {
+                cpu.pc = read_word(cpu.sp);
+                cpu.sp += 2;
+            }
             break;
         case 0xD1: // POP DE
+            cpu.de = read_word(cpu.sp);
+            cpu.sp += 2;
             break;
         case 0xD2: // JP NC, a16
             if (!GET_FLAG(C)) {
@@ -1158,14 +1195,27 @@ static void cpu_step() {
             }
             break;
         case 0xD4: // CALL NC, a16
+            if (GET_FLAG(C)) {
+                cpu.sp -= 2;
+                write_word(cpu.sp, cpu.pc + 2);
+                cpu.pc = read_word(cpu.pc);
+            } else {
+                cpu.pc += 2;
+            }
             break;
         case 0xD5: // PUSH DE
+            cpu.sp -= 2;
+            write_word(cpu.sp, cpu.de);
             break;
         case 0xD6: // SUB d8
             break;
         case 0xD7: // RST 10H
             break;
         case 0xD8: // RET C
+            if (GET_FLAG(C)) {
+                cpu.pc = read_word(cpu.sp);
+                cpu.sp += 2;
+            }
             break;
         case 0xD9: // RETI
             break;
@@ -1177,6 +1227,13 @@ static void cpu_step() {
             }
             break;
         case 0xDC: // CALL C, a16
+            if (GET_FLAG(C)) {
+                cpu.sp -= 2;
+                write_word(cpu.sp, cpu.pc + 2);
+                cpu.pc = read_word(cpu.pc);
+            } else {
+                cpu.pc += 2;
+            }
             break;
         case 0xDE: // SBC A, d8
             break;
@@ -1187,11 +1244,15 @@ static void cpu_step() {
             cpu.pc++;
             break;
         case 0xE1: // POP HL
+            cpu.hl = read_word(cpu.sp);
+            cpu.sp += 2;
             break;
         case 0xE2: // LD (C), A
             write_byte(0xFF00 + cpu.c, cpu.a);
             break;
         case 0xE5: // PUSH HL
+            cpu.sp -= 2;
+            write_word(cpu.sp, cpu.hl);
             break;
         case 0xE6: // AND d8
             cpu.a &= read_byte(cpu.pc);
@@ -1206,6 +1267,8 @@ static void cpu_step() {
             cpu.pc = cpu.hl;
             break;
         case 0xEA: // LD (a16), A
+            write_byte(read_word(cpu.pc), cpu.a);
+            cpu.pc += 2;
             break;
         case 0xEE: // XOR d8
             cpu.a ^= read_byte(cpu.pc);
@@ -1219,6 +1282,8 @@ static void cpu_step() {
             cpu.pc++;
             break;
         case 0xF1: // POP AF
+            cpu.af = read_word(cpu.sp);
+            cpu.sp += 2;
             break;
         case 0xF2: // LD A, (C)
             cpu.a = read_byte(0xFF00 + cpu.c);
@@ -1226,6 +1291,8 @@ static void cpu_step() {
         case 0xF3: // DI
             break;
         case 0xF5: // PUSH AF
+            cpu.sp -= 2;
+            write_word(cpu.sp, cpu.af);
             break;
         case 0xF6: // OR d8
             cpu.a |= read_byte(cpu.pc);
@@ -1237,8 +1304,11 @@ static void cpu_step() {
         case 0xF8: // LD HL, SP+r8
             break;
         case 0xF9: // LD SP, HL
+            cpu.sp = cpu.hl;
             break;
         case 0xFA: // LD A, (a16)
+            cpu.a = read_byte(read_word(cpu.pc));
+            cpu.pc += 2;
             break;
         case 0xFB: // EI
             break;
