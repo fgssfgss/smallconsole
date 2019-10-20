@@ -36,6 +36,10 @@ static enum registers map_register(uint8_t opcode) {
 #define SET_AND_FLAGS() (cpu.f = SET_FLAGS(cpu.a == 0, 0, 1, 0))
 #define SET_xOR_FLAGS() (cpu.f = SET_FLAGS(cpu.a == 0, 0, 0, 0))
 
+// bit ops flags
+#define SET_BIT_FLAGS(bit, reg) (cpu.f = SET_FLAGS(!(reg & (0x1 << bit)), 0, 0, GET_FLAG(C)))
+
+
 static void cpu_dump_state();
 
 static void cpu_step();
@@ -300,6 +304,36 @@ void cpu_run() {
     cpu_step();
 }
 
+// TODO: refactor me
+static void cpu_opcode_bit(enum registers reg, uint8_t bit) {
+    switch(reg) {
+        case REG_B:
+            SET_BIT_FLAGS(bit, cpu.b);
+            break;
+        case REG_C:
+            SET_BIT_FLAGS(bit, cpu.c);
+            break;
+        case REG_D:
+            SET_BIT_FLAGS(bit, cpu.d);
+            break;
+        case REG_E:
+            SET_BIT_FLAGS(bit, cpu.e);
+            break;
+        case REG_H:
+            SET_BIT_FLAGS(bit, cpu.h);
+            break;
+        case REG_L:
+            SET_BIT_FLAGS(bit, cpu.l);
+            break;
+        case REG_HL:
+            // TODO: implement me
+            break;
+        case REG_A:
+            SET_BIT_FLAGS(bit, cpu.a);
+            break;
+
+    }
+}
 
 static void cpu_prefix_cb_handle(int *cycles) {
     uint8_t instruction = read_byte(cpu.pc++);
@@ -327,20 +361,28 @@ static void cpu_prefix_cb_handle(int *cycles) {
         case 0x38: // SRL
             break;
         case 0x40: // BIT 0
+            cpu_opcode_bit(reg, 0);
             break;
         case 0x48: // BIT 1
+            cpu_opcode_bit(reg, 1);
             break;
         case 0x50: // BIT 2
+            cpu_opcode_bit(reg, 2);
             break;
         case 0x58: // BIT 3
+            cpu_opcode_bit(reg, 3);
             break;
         case 0x60: // BIT 4
+            cpu_opcode_bit(reg, 4);
             break;
         case 0x68: // BIT 5
+            cpu_opcode_bit(reg, 5);
             break;
         case 0x70: // BIT 6
+            cpu_opcode_bit(reg, 6);
             break;
         case 0x78: // BIT 7
+            cpu_opcode_bit(reg, 7);
             break;
         case 0x80: // RES 0
             break;
@@ -464,7 +506,7 @@ static void cpu_step() {
         case 0x17: // RLA
             break;
         case 0x18: // JR r8
-            cpu.pc += read_byte(cpu.pc);
+            cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc);
             cpu.pc++;
             break;
         case 0x19: // ADD HL, DE
@@ -491,7 +533,7 @@ static void cpu_step() {
             break;
         case 0x20: // JR NZ, r8
             if (!GET_FLAG(Z)) {
-                cpu.pc += read_byte(cpu.pc);
+                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc);
             }
             cpu.pc++;
             break;
@@ -520,7 +562,7 @@ static void cpu_step() {
             break;
         case 0x28: // JR Z, r8
             if (GET_FLAG(Z)) {
-                cpu.pc += read_byte(cpu.pc);
+                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc);
             }
             cpu.pc++;
             break;
@@ -547,7 +589,7 @@ static void cpu_step() {
             break;
         case 0x30: // JR NC, r8
             if (!GET_FLAG(C)) {
-                cpu.pc += read_byte(cpu.pc);
+                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc);
             }
             cpu.pc++;
             break;
@@ -573,7 +615,7 @@ static void cpu_step() {
             break;
         case 0x38: // JR C, r8
             if (GET_FLAG(C)) {
-                cpu.pc += read_byte(cpu.pc);
+                cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc);
             }
             cpu.pc++;
             break;
