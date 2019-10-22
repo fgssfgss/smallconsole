@@ -570,8 +570,11 @@ static inline ALWAYS_INLINE void cpu_opcode_add_a(uint8_t d8) {
 }
 
 static inline ALWAYS_INLINE void cpu_opcode_add_a_ptr_hl() {
-    uint8_t value = read_byte(cpu.hl);
-    cpu_opcode_add_a(value);
+    cpu_opcode_add_a(read_byte(cpu.hl));
+}
+
+static inline ALWAYS_INLINE void cpu_opcode_add_a_d8() {
+    cpu_opcode_add_a(read_byte(cpu.pc++));
 }
 
 // TODO: implement setting flags after steps
@@ -1223,6 +1226,7 @@ static void cpu_step() {
             write_word(cpu.sp, cpu.bc);
             break;
         case 0xC6: // ADD A, d8
+            cpu_opcode_add_a_d8();
             break;
         case 0xC7: // RST 00H
             cpu.sp -= 2;
