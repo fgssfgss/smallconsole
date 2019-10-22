@@ -562,10 +562,10 @@ static inline ALWAYS_INLINE void cpu_opcode_daa() {
     cpu.f = SET_FLAGS(cpu.a == 0, n_flag, 0, set_carry_flag || GET_FLAG(C));
 }
 
-static inline ALWAYS_INLINE void cpu_opcode_add_a(uint8_t d8) {
-    bool h_flag = (cpu.a & 0xF) <= (0xF - (d8 & 0xF));
-    bool c_flag = cpu.a <= (0xFF - d8);
-    cpu.a += d8;
+static inline ALWAYS_INLINE void cpu_opcode_add_a(uint8_t value) {
+    bool h_flag = (cpu.a & 0x0F) <= (0x0F - (value & 0x0F));
+    bool c_flag = cpu.a <= (0xFF - value);
+    cpu.a += value;
     SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
 }
 
@@ -575,6 +575,21 @@ static inline ALWAYS_INLINE void cpu_opcode_add_a_ptr_hl() {
 
 static inline ALWAYS_INLINE void cpu_opcode_add_a_d8() {
     cpu_opcode_add_a(read_byte(cpu.pc++));
+}
+
+static inline ALWAYS_INLINE void cpu_opcode_adc_a(uint8_t value) {
+    bool h_flag = (cpu.a & 0x0F + value & 0x0F + cpu.c) > 0x0F;
+    bool c_flag = ((uint16_t)cpu.a + value + cpu.c) > 0xFF;
+    cpu.a += (value + cpu.c);
+    SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
+}
+
+static inline ALWAYS_INLINE void cpu_opcode_adc_a_ptr_hl() {
+    cpu_opcode_adc_a(read_byte(cpu.hl));
+}
+
+static inline ALWAYS_INLINE void cpu_opcode_adc_a_d8() {
+    cpu_opcode_adc_a(read_byte(cpu.pc++));
 }
 
 // TODO: implement setting flags after steps
@@ -1031,20 +1046,28 @@ static void cpu_step() {
             cpu_opcode_add_a(cpu.a);
             break;
         case 0x88: // ADC A, B
+            cpu_opcode_adc_a(cpu.a);
             break;
         case 0x89: // ADC A, C
+            cpu_opcode_adc_a(cpu.c);
             break;
         case 0x8A: // ADC A, D
+            cpu_opcode_adc_a(cpu.d);
             break;
         case 0x8B: // ADC A, E
+            cpu_opcode_adc_a(cpu.e);
             break;
         case 0x8C: // ADC A, H
+            cpu_opcode_adc_a(cpu.h);
             break;
         case 0x8D: // ADC A, L
+            cpu_opcode_adc_a(cpu.l);
             break;
         case 0x8E: // ADC A, (HL)
+            cpu_opcode_adc_a_ptr_hl();
             break;
         case 0x8F: // ADC A, A
+            cpu_opcode_adc_a(cpu.a);
             break;
         case 0x90: // SUB B
             break;
@@ -1270,6 +1293,7 @@ static void cpu_step() {
             cpu.pc = read_word(cpu.pc);
             break;
         case 0xCE: // ADC A, d8
+            cpu_opcode_adc_a_d8();
             break;
         case 0xCF: // RST 08H
             cpu.sp -= 2;
