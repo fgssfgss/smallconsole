@@ -1046,7 +1046,7 @@ static void cpu_step() {
             cpu_opcode_add_a(cpu.a);
             break;
         case 0x88: // ADC A, B
-            cpu_opcode_adc_a(cpu.a);
+            cpu_opcode_adc_a(cpu.b);
             break;
         case 0x89: // ADC A, C
             cpu_opcode_adc_a(cpu.c);
