@@ -562,11 +562,16 @@ static inline ALWAYS_INLINE void cpu_opcode_daa() {
     cpu.f = SET_FLAGS(cpu.a == 0, n_flag, 0, set_carry_flag || GET_FLAG(C));
 }
 
-static inline ALWAYS_INLINE void cpu_opcode_add_a_r8(uint8_t r8) {
-    bool h_flag = (cpu.a & 0xF) <= (0xF - (r8 & 0xF));
-    bool c_flag = cpu.a <= (0xFF - r8);
-    cpu.a += r8;
+static inline ALWAYS_INLINE void cpu_opcode_add_a(uint8_t d8) {
+    bool h_flag = (cpu.a & 0xF) <= (0xF - (d8 & 0xF));
+    bool c_flag = cpu.a <= (0xFF - d8);
+    cpu.a += d8;
     SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
+}
+
+static inline ALWAYS_INLINE void cpu_opcode_add_a_ptr_hl() {
+    uint8_t value = read_byte(cpu.hl);
+    cpu_opcode_add_a(value);
 }
 
 // TODO: implement setting flags after steps
@@ -999,27 +1004,28 @@ static void cpu_step() {
             cpu.a = cpu.a;
             break;
         case 0x80: // ADD A, B
-            cpu_opcode_add_a_r8(cpu.b);
+            cpu_opcode_add_a(cpu.b);
             break;
         case 0x81: // ADD A, C
-            cpu_opcode_add_a_r8(cpu.c);
+            cpu_opcode_add_a(cpu.c);
             break;
         case 0x82: // ADD A, D
-            cpu_opcode_add_a_r8(cpu.d);
+            cpu_opcode_add_a(cpu.d);
             break;
         case 0x83: // ADD A, E
-            cpu_opcode_add_a_r8(cpu.e);
+            cpu_opcode_add_a(cpu.e);
             break;
         case 0x84: // ADD A, H
-            cpu_opcode_add_a_r8(cpu.h);
+            cpu_opcode_add_a(cpu.h);
             break;
         case 0x85: // ADD A, L
-            cpu_opcode_add_a_r8(cpu.l);
+            cpu_opcode_add_a(cpu.l);
             break;
         case 0x86: // ADD A, (HL)
+            cpu_opcode_add_a_ptr_hl();
             break;
         case 0x87: // ADD A, A
-            cpu_opcode_add_a_r8(cpu.a);
+            cpu_opcode_add_a(cpu.a);
             break;
         case 0x88: // ADC A, B
             break;
