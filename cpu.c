@@ -563,8 +563,8 @@ static inline ALWAYS_INLINE void cpu_opcode_daa() {
 }
 
 static inline ALWAYS_INLINE void cpu_opcode_add_a(uint8_t value) {
-    bool h_flag = (cpu.a & 0x0F) <= (0x0F - (value & 0x0F));
-    bool c_flag = cpu.a <= (0xFF - value);
+    bool h_flag = (cpu.a & 0x0F + value & 0x0F) > 0x0F;
+    bool c_flag = ((uint16_t)cpu.a + value) > 0xFF;
     cpu.a += value;
     SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
 }
