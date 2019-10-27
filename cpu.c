@@ -578,9 +578,10 @@ static inline ALWAYS_INLINE void cpu_opcode_add_a_d8() {
 }
 
 static inline ALWAYS_INLINE void cpu_opcode_adc_a(uint8_t value) {
-    bool h_flag = (cpu.a & 0x0F + value & 0x0F + cpu.c) > 0x0F;
-    bool c_flag = ((uint16_t)cpu.a + value + cpu.c) > 0xFF;
-    cpu.a += (value + cpu.c);
+    bool c_flag_now = GET_FLAG(C);
+    bool h_flag = (cpu.a & 0x0F + value & 0x0F + c_flag_now) > 0x0F;
+    bool c_flag = ((uint16_t)cpu.a + value + c_flag_now) > 0xFF;
+    cpu.a += (value + c_flag_now);
     SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
 }
 
