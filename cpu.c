@@ -344,7 +344,7 @@ static void cpu_opcode_bit(enum registers reg, uint8_t bit) {
 }
 
 // TODO: refactor me
-static inline ALWAYS_INLINE void cpu_opcode_set(enum registers reg, uint8_t bit) {
+static inline void cpu_opcode_set(enum registers reg, uint8_t bit) {
     switch(reg) {
         case REG_B:
             cpu.b |= (1 << bit);
@@ -375,7 +375,7 @@ static inline ALWAYS_INLINE void cpu_opcode_set(enum registers reg, uint8_t bit)
 }
 
 // TODO: refactor me
-static inline ALWAYS_INLINE void cpu_opcode_res(enum registers reg, uint8_t bit) {
+static inline void cpu_opcode_res(enum registers reg, uint8_t bit) {
     switch(reg) {
         case REG_B:
             cpu.b &= ~(1 << bit);
@@ -405,7 +405,7 @@ static inline ALWAYS_INLINE void cpu_opcode_res(enum registers reg, uint8_t bit)
     }
 }
 
-static inline ALWAYS_INLINE void cpu_opcode_swap(enum registers reg) {
+static inline void cpu_opcode_swap(enum registers reg) {
     switch(reg) {
         case REG_B:
             cpu.b = ((cpu.b & 0x0F) << 4 | (cpu.b & 0xF0) >> 4);
@@ -546,7 +546,7 @@ static void cpu_prefix_cb_handle(int *cycles) {
     }
 }
 
-static inline ALWAYS_INLINE void cpu_opcode_daa() {
+static inline void cpu_opcode_daa() {
     bool n_flag = GET_FLAG(N);
     
     if ((cpu.a & 0xF) > 0x9 || GET_FLAG(H)) {
@@ -562,22 +562,22 @@ static inline ALWAYS_INLINE void cpu_opcode_daa() {
     cpu.f = SET_FLAGS(cpu.a == 0, n_flag, 0, set_carry_flag || GET_FLAG(C));
 }
 
-static inline ALWAYS_INLINE void cpu_opcode_add_a(uint8_t value) {
+static inline void cpu_opcode_add_a(uint8_t value) {
     bool h_flag = (cpu.a & 0x0F + value & 0x0F) > 0x0F;
     bool c_flag = ((uint16_t)cpu.a + value) > 0xFF;
     cpu.a += value;
     SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
 }
 
-static inline ALWAYS_INLINE void cpu_opcode_add_a_ptr_hl() {
+static inline void cpu_opcode_add_a_ptr_hl() {
     cpu_opcode_add_a(read_byte(cpu.hl));
 }
 
-static inline ALWAYS_INLINE void cpu_opcode_add_a_d8() {
+static inline void cpu_opcode_add_a_d8() {
     cpu_opcode_add_a(read_byte(cpu.pc++));
 }
 
-static inline ALWAYS_INLINE void cpu_opcode_adc_a(uint8_t value) {
+static inline void cpu_opcode_adc_a(uint8_t value) {
     bool c_flag_now = GET_FLAG(C);
     bool h_flag = (cpu.a & 0x0F + value & 0x0F + c_flag_now) > 0x0F;
     bool c_flag = ((uint16_t)cpu.a + value + c_flag_now) > 0xFF;
@@ -585,12 +585,57 @@ static inline ALWAYS_INLINE void cpu_opcode_adc_a(uint8_t value) {
     SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
 }
 
-static inline ALWAYS_INLINE void cpu_opcode_adc_a_ptr_hl() {
+static inline void cpu_opcode_adc_a_ptr_hl() {
     cpu_opcode_adc_a(read_byte(cpu.hl));
 }
 
-static inline ALWAYS_INLINE void cpu_opcode_adc_a_d8() {
+static inline void cpu_opcode_adc_a_d8() {
     cpu_opcode_adc_a(read_byte(cpu.pc++));
+}
+
+static inline void cpu_opcode_sub_a(uint8_t value) {
+    bool h_flag = (cpu.a & 0x0F - value & 0x0F) > 0x0F;
+    bool c_flag = ((uint16_t)cpu.a - value) > 0xFF;
+    cpu.a -= value;
+    SET_FLAGS(cpu.a == 0, 1, h_flag, c_flag);
+}
+
+static inline void cpu_opcode_sub_a_ptr_hl() {
+    cpu_opcode_sub_a(read_byte(cpu.hl));
+}
+
+static inline void cpu_opcode_sub_a_ptr_d8() {
+    cpu_opcode_sub_a(read_byte(cpu.pc++));
+}
+
+static inline void cpu_opcode_sbc_a(uint8_t value) {
+    bool c_flag_now = GET_FLAG(C);
+    bool h_flag = (cpu.a & 0x0F - (value & 0x0F + c_flag_now)) > 0x0F;
+    bool c_flag = ((uint16_t)cpu.a - (value + c_flag_now)) > 0xFF;
+    cpu.a -= (value + c_flag_now);
+    SET_FLAGS(cpu.a == 0, 1, h_flag, c_flag);
+}
+
+static inline void cpu_opcode_sbc_a_ptr_hl() {
+    cpu_opcode_sbc_a(read_byte(cpu.hl));
+}
+
+static inline void cpu_opcode_sbc_a_ptr_d8() {
+    cpu_opcode_sbc_a(read_byte(cpu.pc++));
+}
+
+static inline void cpu_opcode_cp_a(uint8_t value) {
+    bool h_flag = (cpu.a & 0x0F - value & 0x0F) > 0x0F;
+    bool c_flag = ((uint16_t)cpu.a - value) > 0xFF;
+    SET_FLAGS(cpu.a == 0, 1, h_flag, c_flag);
+}
+
+static inline void cpu_opcode_cp_a_ptr_hl() {
+    cpu_opcode_cp_a(read_byte(cpu.hl));
+}
+
+static inline void cpu_opcode_cp_a_ptr_d8() {
+    cpu_opcode_cp_a(read_byte(cpu.pc++));
 }
 
 // TODO: implement setting flags after steps
@@ -1071,36 +1116,52 @@ static void cpu_step() {
             cpu_opcode_adc_a(cpu.a);
             break;
         case 0x90: // SUB B
+            cpu_opcode_sub_a(cpu.b);
             break;
         case 0x91: // SUB C
+            cpu_opcode_sub_a(cpu.c);
             break;
         case 0x92: // SUB D
+            cpu_opcode_sub_a(cpu.d);
             break;
         case 0x93: // SUB E
+            cpu_opcode_sub_a(cpu.e);
             break;
         case 0x94: // SUB H
+            cpu_opcode_sub_a(cpu.h);
             break;
         case 0x95: // SUB L
+            cpu_opcode_sub_a(cpu.l);
             break;
         case 0x96: // SUB (HL)
+            cpu_opcode_sub_a_ptr_hl();
             break;
         case 0x97: // SUB A
+            cpu_opcode_sub_a(cpu.a);
             break;
         case 0x98: // SBC A, B
+            cpu_opcode_sbc_a(cpu.b);
             break;
         case 0x99: // SBC A, C
+            cpu_opcode_sbc_a(cpu.c);
             break;
         case 0x9A: // SBC A, D
+            cpu_opcode_sbc_a(cpu.d);
             break;
         case 0x9B: // SBC A, E
+            cpu_opcode_sbc_a(cpu.e);
             break;
         case 0x9C: // SBC A, H
+            cpu_opcode_sbc_a(cpu.h);
             break;
         case 0x9D: // SBC A, L
+            cpu_opcode_sbc_a(cpu.l);
             break;
         case 0x9E: // SBC A, (HL)
+            cpu_opcode_sbc_a_ptr_hl();
             break;
         case 0x9F: // SBC A, A
+            cpu_opcode_sbc_a(cpu.a);
             break;
         case 0xA0: // AND B
             cpu.a = cpu.a & cpu.b;
@@ -1199,20 +1260,28 @@ static void cpu_step() {
             SET_xOR_FLAGS();
             break;
         case 0xB8: // CP B
+            cpu_opcode_cp_a(cpu.b);
             break;
         case 0xB9: // CP C
+            cpu_opcode_cp_a(cpu.c);
             break;
         case 0xBA: // CP D
+            cpu_opcode_cp_a(cpu.d);
             break;
         case 0xBB: // CP E
+            cpu_opcode_cp_a(cpu.e);
             break;
         case 0xBC: // CP H
+            cpu_opcode_cp_a(cpu.h);
             break;
         case 0xBD: // CP L
+            cpu_opcode_cp_a(cpu.l);
             break;
         case 0xBE: // CP (HL)
+            cpu_opcode_cp_a_ptr_hl();
             break;
         case 0xBF: // CP A
+            cpu_opcode_cp_a(cpu.a);
             break;
         case 0xC0: // RET NZ
             if (!GET_FLAG(Z)) {
@@ -1334,6 +1403,7 @@ static void cpu_step() {
             write_word(cpu.sp, cpu.de);
             break;
         case 0xD6: // SUB d8
+            cpu_opcode_sub_a_ptr_d8();
             break;
         case 0xD7: // RST 10H
             cpu.sp -= 2;
@@ -1369,6 +1439,7 @@ static void cpu_step() {
             }
             break;
         case 0xDE: // SBC A, d8
+            cpu_opcode_sbc_a_ptr_d8();
             break;
         case 0xDF: // RST 18H
             cpu.sp -= 2;
@@ -1458,6 +1529,7 @@ static void cpu_step() {
         case 0xFB: // EI
             break;
         case 0xFE: // CP d8
+            cpu_opcode_cp_a_ptr_d8();
             break;
         case 0xFF: // RST 38H
             cpu.sp -= 2;
