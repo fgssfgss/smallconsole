@@ -63,8 +63,8 @@ typedef struct __cpu_state {
     struct {
         union {
             struct {
-                uint8_t a;
                 uint8_t f;
+                uint8_t a;
             };
             uint16_t af;
         };
@@ -72,8 +72,8 @@ typedef struct __cpu_state {
     struct {
         union {
             struct {
-                uint8_t b;
                 uint8_t c;
+                uint8_t b;
             };
             uint16_t bc;
         };
@@ -81,8 +81,8 @@ typedef struct __cpu_state {
     struct {
         union {
             struct {
-                uint8_t d;
                 uint8_t e;
+                uint8_t d;
             };
             uint16_t de;
         };
@@ -90,8 +90,8 @@ typedef struct __cpu_state {
     struct {
         union {
             struct {
-                uint8_t h;
                 uint8_t l;
+                uint8_t h;
             };
             uint16_t hl;
         };
@@ -303,9 +303,10 @@ void init_cpu() {
 }
 
 void cpu_run() {
+    cpu.pc = 0x00e0;
     cpu.stop = false;
 
-    while(cpu.pc != 0x0099) {
+    while(!cpu.stop) {
         cpu_step();
     }
 
@@ -443,6 +444,55 @@ static inline void cpu_opcode_swap(enum registers reg) {
     }
 }
 
+/* this function only rotate data */
+static inline uint8_t cpu_opcode_rl(uint8_t data) {
+    bool c_flag = GET_FLAG(C);
+    bool new_flag = data & 0xff;
+    data <<= 1;
+    data |= !!c_flag;
+    cpu.f = SET_FLAGS(data == 0, 0, 0, new_flag);
+    return data;
+}
+
+static inline void cpu_opcode_rla() {
+    bool c_flag = GET_FLAG(C);
+    bool new_flag = cpu.a & 0xff;
+    cpu.a <<= 1;
+    cpu.a |= !!c_flag;
+    cpu.f = SET_FLAGS(0, 0, 0, new_flag);
+}
+
+static inline void cpu_opcode_rl_full(enum registers reg) {
+    switch(reg) {
+        case REG_B:
+            cpu.b = cpu_opcode_rl(cpu.b);
+            break;
+        case REG_C:
+            cpu.c = cpu_opcode_rl(cpu.c);
+            break;
+        case REG_D:
+            cpu.d = cpu_opcode_rl(cpu.d);
+            break;
+        case REG_E:
+            cpu.e = cpu_opcode_rl(cpu.e);
+            break;
+        case REG_H:
+            cpu.h = cpu_opcode_rl(cpu.h);
+            break;
+        case REG_L:
+            cpu.l = cpu_opcode_rl(cpu.l);
+            break;
+        case REG_HL:
+            write_byte(cpu.hl, cpu_opcode_rl(read_byte(cpu.hl)));
+            break;
+        case REG_A:
+            cpu.a = cpu_opcode_rl(cpu.a);
+            break;
+    }
+}
+
+
+
 static void cpu_prefix_cb_handle(int *cycles) {
     uint8_t instruction = read_byte(cpu.pc++);
     *cycles += cycles_0xCB_opcodes[instruction];
@@ -457,6 +507,7 @@ static void cpu_prefix_cb_handle(int *cycles) {
         case 0x08: // RRC
             break;
         case 0x10: // RL
+            cpu_opcode_rl_full(reg);
             break;
         case 0x18: // RR
             break;
@@ -566,7 +617,7 @@ static inline void cpu_opcode_add_a(uint8_t value) {
     bool h_flag = (cpu.a & 0x0F + value & 0x0F) > 0x0F;
     bool c_flag = ((uint16_t)cpu.a + value) > 0xFF;
     cpu.a += value;
-    SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
+    cpu.f = SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
 }
 
 static inline void cpu_opcode_add_a_ptr_hl() {
@@ -582,7 +633,7 @@ static inline void cpu_opcode_adc_a(uint8_t value) {
     bool h_flag = (cpu.a & 0x0F + value & 0x0F + c_flag_now) > 0x0F;
     bool c_flag = ((uint16_t)cpu.a + value + c_flag_now) > 0xFF;
     cpu.a += (value + c_flag_now);
-    SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
+    cpu.f = SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
 }
 
 static inline void cpu_opcode_adc_a_ptr_hl() {
@@ -597,7 +648,7 @@ static inline void cpu_opcode_sub_a(uint8_t value) {
     bool h_flag = (cpu.a & 0x0F - value & 0x0F) > 0x0F;
     bool c_flag = ((uint16_t)cpu.a - value) > 0xFF;
     cpu.a -= value;
-    SET_FLAGS(cpu.a == 0, 1, h_flag, c_flag);
+    cpu.f = SET_FLAGS(cpu.a == 0, 1, h_flag, c_flag);
 }
 
 static inline void cpu_opcode_sub_a_ptr_hl() {
@@ -613,7 +664,7 @@ static inline void cpu_opcode_sbc_a(uint8_t value) {
     bool h_flag = (cpu.a & 0x0F - (value & 0x0F + c_flag_now)) > 0x0F;
     bool c_flag = ((uint16_t)cpu.a - (value + c_flag_now)) > 0xFF;
     cpu.a -= (value + c_flag_now);
-    SET_FLAGS(cpu.a == 0, 1, h_flag, c_flag);
+    cpu.f = SET_FLAGS(cpu.a == 0, 1, h_flag, c_flag);
 }
 
 static inline void cpu_opcode_sbc_a_ptr_hl() {
@@ -627,7 +678,8 @@ static inline void cpu_opcode_sbc_a_ptr_d8() {
 static inline void cpu_opcode_cp_a(uint8_t value) {
     bool h_flag = (cpu.a & 0x0F - value & 0x0F) > 0x0F;
     bool c_flag = ((uint16_t)cpu.a - value) > 0xFF;
-    SET_FLAGS(cpu.a == 0, 1, h_flag, c_flag);
+    bool z_flag = (cpu.a - value) == 0;
+    cpu.f = SET_FLAGS(z_flag, 1, h_flag, c_flag);
 }
 
 static inline void cpu_opcode_cp_a_ptr_hl() {
@@ -725,6 +777,7 @@ static void cpu_step() {
             cpu.pc++;
             break;
         case 0x17: // RLA
+            cpu_opcode_rla();
             break;
         case 0x18: // JR r8
             cpu.pc = (int16_t)cpu.pc + (int8_t)read_byte(cpu.pc) + 1;
