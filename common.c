@@ -25,11 +25,11 @@ void println(const char *message, ...) {
 }
 
 void printl(const char *message, ...) {
-    va_list arg;
+	va_list arg;
 
-    va_start(arg, message);
-    vfprintf(log, message, arg);
-    va_end(arg);
+	va_start(arg, message);
+	vfprintf(log, message, arg);
+	va_end(arg);
 
-    fflush(log);
+	fflush(log);
 }

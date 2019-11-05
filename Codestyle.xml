@@ -1,0 +1,34 @@
+<code_scheme name="Default" version="173">
+  <Objective-C>
+    <option name="INDENT_NAMESPACE_MEMBERS" value="8" />
+    <option name="INDENT_C_STRUCT_MEMBERS" value="8" />
+    <option name="INDENT_CLASS_MEMBERS" value="8" />
+    <option name="INDENT_INSIDE_CODE_BLOCK" value="8" />
+    <option name="FUNCTION_CALL_ARGUMENTS_COMMA_ON_NEXT_LINE" value="true" />
+    <option name="DISCHARGED_SHORT_TERNARY_OPERATOR" value="true" />
+  </Objective-C>
+  <codeStyleSettings language="ObjectiveC">
+    <option name="ELSE_ON_NEW_LINE" value="true" />
+    <option name="WHILE_ON_NEW_LINE" value="true" />
+    <option name="CATCH_ON_NEW_LINE" value="true" />
+    <option name="INDENT_CASE_FROM_SWITCH" value="false" />
+    <option name="ALIGN_MULTILINE_TERNARY_OPERATION" value="false" />
+    <option name="ALIGN_GROUP_FIELD_DECLARATIONS" value="true" />
+    <option name="SPACE_AROUND_MULTIPLICATIVE_OPERATORS" value="false" />
+    <option name="SPACE_AROUND_SHIFT_OPERATORS" value="false" />
+    <option name="SPACE_AROUND_LAMBDA_ARROW" value="false" />
+    <option name="SPACE_BEFORE_METHOD_PARENTHESES" value="true" />
+    <option name="TERNARY_OPERATION_SIGNS_ON_NEXT_LINE" value="false" />
+    <option name="IF_BRACE_FORCE" value="3" />
+    <option name="DOWHILE_BRACE_FORCE" value="3" />
+    <option name="WHILE_BRACE_FORCE" value="3" />
+    <option name="FOR_BRACE_FORCE" value="3" />
+    <indentOptions>
+      <option name="INDENT_SIZE" value="8" />
+      <option name="TAB_SIZE" value="8" />
+      <option name="USE_TAB_CHARACTER" value="true" />
+      <option name="SMART_TABS" value="true" />
+      <option name="LABEL_INDENT_ABSOLUTE" value="true" />
+    </indentOptions>
+  </codeStyleSettings>
+</code_scheme>
