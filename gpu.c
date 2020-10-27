@@ -25,30 +25,35 @@ typedef struct {
 } gpu_state;
 
 static gpu_state state;
-static uint8_t vram[0x2000]; // video ram, 8 kbytes
-static uint8_t oam[0x9F]; // oam ram
+static uint8_t   vram[0x2000]; // video ram, 8 kbytes
+static uint8_t   oam[0xA0]; // oam ram
 
-static void gpu_render_bg(int scanline);
-static uint8_t inline color_to_default_palette(int color);
+static void gpu_render_bg (int scanline);
 
-void gpu_init(void) {
+static void gpu_render_sprites (void);
+
+static uint8_t inline color_to_default_palette (int color);
+
+void gpu_init (void) {
+	memset(oam, 0x00, 0xA0);
 	state.scanline_counter = 456;
 
 	screen_clear();
 	screen_vsync();
 }
 
+/* TODO MAKE IT BETTER */
 void gpu_step(int cycles) {
-	int mode;
-	uint8_t status = state.lcd_stat;
-	int current_mode = state.lcd_stat & 3;
-	bool request_interrupt = false;
+	int     mode;
+	uint8_t status            = state.lcd_stat;
+	int     current_mode      = state.lcd_stat & 3;
+	bool    request_interrupt = false;
 
 	if (!(state.lcd_control & 0x80)) {
 		screen_clear();
 		screen_vsync();
 		state.scanline_counter = 456;
-		state.curline = 0;
+		state.curline          = 0;
 		status &= 252;
 		status &= ~(1 << 0);
 		status &= ~(1 << 1);
@@ -57,12 +62,12 @@ void gpu_step(int cycles) {
 	}
 
 	if (state.curline >= 144) {
-		mode = 1;
+		mode              = 1;
 		status |= (1 << 0);
 		status &= ~(1 << 1);
 		request_interrupt = (status & 0x10) ? true : false;
 	} else if (state.scanline_counter >= 376) {
-		mode = 2;
+		mode              = 2;
 		status &= ~(1 << 0);
 		status |= (1 << 1);
 		request_interrupt = (status & 0x20) ? true : false;
@@ -72,15 +77,13 @@ void gpu_step(int cycles) {
 		status |= (1 << 1);
 		if (mode != current_mode) {
 			gpu_render_bg(state.curline);
-			//gpu_render_sprite();
 		}
 	} else {
-		mode = 0;
+		mode              = 0;
 		status &= ~(1 << 0);
 		status &= ~(1 << 1);
 		request_interrupt = (status & 0x8) ? true : false;
 		if (mode != current_mode) {
-			//println("DMA IMPLEMENT??");
 		}
 	}
 
@@ -95,7 +98,7 @@ void gpu_step(int cycles) {
 			cpu_request_interrupt(1);
 		}
 	} else {
-		status &= ~(1 << 2);
+		status &= ~(1<<2);
 	}
 
 	state.lcd_stat = status;
@@ -106,27 +109,88 @@ void gpu_step(int cycles) {
 		state.curline++;
 		if (state.curline > 153) {
 			state.curline = 0;
+
+			gpu_render_sprites();
+
 			screen_vsync();
-			SDL_Delay(1);
 		}
 
 		state.scanline_counter += 456;
 
-		if (state.curline == 144) {
+		if (state.curline == SCREEN_HEIGHT) {
 			cpu_request_interrupt(0);
 		}
 	}
 }
 
-static void gpu_render_bg(int scanline) {
-	const uint16_t bg_base = (state.lcd_control & 0x8) ? 0x1C00 : 0x1800;
-	const uint16_t tile_base = (state.lcd_control & 0x10) ? 0x0000 : 0x0800;
-	const uint8_t tile_size = 16;
+static void gpu_render_sprites (void) {
+	const uint8_t sprite_size = (state.lcd_control & 0x4) ? 2 : 1;
 
-	uint16_t ypos = state.scrolly + scanline;
-	uint8_t tile_row = ypos / 8;
+	for (uint8_t sprite = 0; sprite < 40; ++sprite) {
+		uint8_t sprite_offset = sprite*4;
+
+		// position for right bottom pixel, so we must subtract 8/16 px for correct rendering
+		uint8_t sprite_y = oam[sprite_offset];              // y pos
+		uint8_t sprite_x = oam[sprite_offset + 1];          // x pos
+		uint8_t sprite_n = oam[sprite_offset + 2];          // number in tile table
+		uint8_t sprite_a = oam[sprite_offset + 3];          // attribute bit array
+
+
+
+		bool use_first_palette = (sprite_a & 0x10) ? true : false; // TODO ALL LOGIC WITH PALETTES
+		bool flip_x            = (sprite_a & 0x20) ? true : false;
+		bool flip_y            = (sprite_a & 0x40) ? true : false;
+		bool lower_prio        = (sprite_a & 0x80) ? true : false;
+
+		if (sprite_y == 0 || sprite_y >= SCREEN_HEIGHT + 16) {
+			continue;
+		}
+
+		if (sprite_x == 0 || sprite_x >= SCREEN_WIDTH + 8) {
+			continue;
+		}
+
+		uint8_t screen_y = sprite_y - 16;
+		uint8_t screen_x = sprite_x - 8;
+
+		uint16_t tile_offset = 0x0000 + sprite_n*16;
+
+		for (uint8_t y = 0; y < (8*sprite_size); ++y) {
+			for (uint8_t x = 0; x < 8; ++x) {
+				uint8_t ypos = !flip_y ? y : (8*sprite_size) - y - 1;
+				uint8_t xpos = !flip_x ? x : 8 - x - 1;
+
+				if (screen_y + y > SCREEN_HEIGHT || screen_x + x > SCREEN_WIDTH) {
+					continue;
+				}
+
+				uint8_t tile_lo_bit = (vram[tile_offset + ypos*2]>>(8 - xpos - 1)) & 0x1;
+				uint8_t tile_hi_bit = (vram[tile_offset + ypos*2 + 1]>>(8 - xpos - 1)) & 0x1;
+
+				int pixel_color = (tile_hi_bit<<1) | tile_lo_bit;
+
+				// TODO: check this crap
+				if (lower_prio && pixel_color != 255) {
+					continue;
+				}
+
+				uint8_t color = color_to_default_palette(pixel_color);
+				screen_put_pixel(screen_x + xpos, screen_y + ypos, color, color, color);
+			}
+		}
+	}
+}
+
+static void gpu_render_bg (int scanline) {
+	const uint16_t bg_base   = (state.lcd_control & 0x8) ? 0x1C00 : 0x1800;
+	const uint16_t tile_base = (state.lcd_control & 0x10) ? 0x0000 : 0x0800;
+	const uint8_t  tile_size = 16;
+
+	uint16_t ypos     = state.scrolly + scanline;
+	uint8_t  tile_row = ypos/8;
 
 	if (!(state.lcd_control & 0x1)) {
+		screen_clear();
 		return;
 	}
 
@@ -160,10 +224,12 @@ uint8_t gpu_oam_read(uint16_t addr) {
 }
 
 void gpu_write(uint16_t addr, uint8_t val) {
+	//println("gpu mem write 0x%04x = 0x%02x", addr + 0x8000, val);
 	vram[addr] = val;
 }
 
 uint8_t gpu_read(uint16_t addr) {
+	//println("gpu mem read 0x%02x at addr 0x%04x", vram[addr], addr + 0x8000);
 	return vram[addr];
 }
 
@@ -203,7 +269,9 @@ void gpu_write_reg(uint16_t addr, uint8_t val) {
 		state.wndposx = val;
 		break;
 	case 0xFF46:
-		println("DMA 0xFF46 accessed with val %02x", val);
+		for (uint8_t index = 0; index <= 0x9F; ++index) {
+			oam[index] = cpu_get_dma(val, index);
+		}
 		break;
 	default:
 		break;

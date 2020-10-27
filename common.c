@@ -11,15 +11,10 @@ void init_common(void) {
 	SDL_Init(SDL_INIT_VIDEO);
 
 	window = SDL_CreateWindow(
-		"smallconsole",
-		SDL_WINDOWPOS_UNDEFINED,
-		SDL_WINDOWPOS_UNDEFINED,
-		160,
-		144,
-		0
+		"smallconsole", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, 0
 	);
 
-	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
 }
 
 void screen_put_pixel(int x, int y, uint8_t r, uint8_t g, uint8_t b) {

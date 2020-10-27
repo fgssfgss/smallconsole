@@ -37,59 +37,77 @@ enum registers {
 #define SET_SWAP_FLAGS(data) (cpu.f = SET_FLAGS(data == 0, 0, 0, 0))
 
 
-static void cpu_dump_state();
+static void cpu_dump_state ();
 
-static int cpu_step(void);
+static int cpu_step (void);
 
-static uint8_t cpu_read_register(uint16_t addr);
+static void handle_interrupts (void);
 
-static void cpu_write_register(uint16_t addr, uint8_t val);
+static uint8_t cpu_read_register (uint16_t addr);
 
-static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr);
+static void cpu_write_register (uint16_t addr, uint8_t val);
 
-static inline ALWAYS_INLINE void write_byte(uint16_t addr, uint8_t val);
+static inline ALWAYS_INLINE uint8_t read_byte (uint16_t addr);
 
-static inline ALWAYS_INLINE uint16_t read_word(uint16_t addr);
+static inline ALWAYS_INLINE void write_byte (uint16_t addr, uint8_t val);
 
-static inline ALWAYS_INLINE void write_word(uint16_t addr, uint16_t val);
+static inline ALWAYS_INLINE uint16_t read_word (uint16_t addr);
 
-static enum registers map_register(uint8_t opcode);
+static inline ALWAYS_INLINE void write_word (uint16_t addr, uint16_t val);
 
-static void cpu_print_mem(uint16_t begin, uint16_t end);
+static inline ALWAYS_INLINE void stack_push (uint16_t val);
 
-static void cpu_opcode_bit(enum registers reg, uint8_t bit);
+static inline ALWAYS_INLINE uint16_t stack_pop (void);
 
-static inline void cpu_opcode_set(enum registers reg, uint8_t bit);
+static enum registers map_register (uint8_t opcode);
 
-static inline void cpu_opcode_res(enum registers reg, uint8_t bit);
+static void cpu_print_mem (uint16_t begin, uint16_t end);
+
+static void cpu_opcode_bit (enum registers reg, uint8_t bit);
+
+static inline void cpu_opcode_set (enum registers reg, uint8_t bit);
+
+static inline void cpu_opcode_res (enum registers reg, uint8_t bit);
 
 static inline void cpu_opcode_swap(enum registers reg);
 
 static inline uint8_t cpu_opcode_rl(uint8_t data);
 
-static inline void cpu_opcode_rla();
+static inline void cpu_opcode_rla ();
 
-static inline void cpu_opcode_rl_full(enum registers reg);
+static inline void cpu_opcode_rl_full (enum registers reg);
 
-static inline uint8_t cpu_opcode_rr(uint8_t data);
+static inline uint8_t cpu_opcode_rr (uint8_t data);
 
-static inline void cpu_opcode_rra();
+static inline void cpu_opcode_rra ();
 
-static inline void cpu_opcode_rr_full(enum registers reg);
+static inline void cpu_opcode_rr_full (enum registers reg);
 
-static inline uint8_t cpu_opcode_rlc(uint8_t value);
+static inline void cpu_opcode_sla_full (enum registers reg);
 
-static inline uint8_t cpu_opcode_rrc(uint8_t value);
+static inline void cpu_opcode_srl_full (enum registers reg);
 
-static inline void cpu_opcode_rlca();
+static inline void cpu_opcode_sra_full (enum registers reg);
 
-static inline void cpu_opcode_rrca();
+static inline uint8_t cpu_opcode_rlc (uint8_t value);
 
-static inline void cpu_opcode_rlc_full(enum registers reg);
+static inline uint8_t cpu_opcode_rrc (uint8_t value);
 
-static inline void cpu_opcode_rrc_full(enum registers reg);
+static inline uint8_t cpu_opcode_sla (uint8_t value);
 
-static void cpu_prefix_cb_handle(int *cycles);
+static inline uint8_t cpu_opcode_srl (uint8_t value);
+
+static inline uint8_t cpu_opcode_sra (uint8_t value);
+
+static inline void cpu_opcode_rlca ();
+
+static inline void cpu_opcode_rrca ();
+
+static inline void cpu_opcode_rlc_full (enum registers reg);
+
+static inline void cpu_opcode_rrc_full (enum registers reg);
+
+static void cpu_prefix_cb_handle (int *cycles);
 
 static inline void cpu_opcode_daa();
 
@@ -127,25 +145,35 @@ static inline void cpu_opcode_add_hl(uint16_t value);
 
 static inline void cpu_opcode_add_sp(int8_t value);
 
-static inline void cpu_opcode_ccf();
+static inline void cpu_opcode_ccf ();
 
-static inline void cpu_opcode_cpl();
+static inline void cpu_opcode_cpl ();
 
-static inline void cpu_opcode_scf();
+static inline void cpu_opcode_scf ();
 
-static inline void cpu_opcode_ld_hl_sp(int8_t value);
+static inline void cpu_opcode_ld_hl_sp (int8_t value);
 
-static inline void cpu_opcode_rst(const uint8_t offset);
+static inline void cpu_opcode_rst (const uint8_t offset);
 
-static void cpu_instr_0x00(int *cycles);
-static void cpu_instr_0x01(int *cycles);
-static void cpu_instr_0x02(int *cycles);
-static void cpu_instr_0x03(int *cycles);
-static void cpu_instr_0x04(int *cycles);
-static void cpu_instr_0x05(int *cycles);
-static void cpu_instr_0x06(int *cycles);
-static void cpu_instr_0x07(int *cycles);
-static void cpu_instr_0x08(int *cycles);
+static inline void cpu_opcode_interrupt (const uint8_t offset);
+
+static void cpu_instr_0x00 (int *cycles);
+
+static void cpu_instr_0x01 (int *cycles);
+
+static void cpu_instr_0x02 (int *cycles);
+
+static void cpu_instr_0x03 (int *cycles);
+
+static void cpu_instr_0x04 (int *cycles);
+
+static void cpu_instr_0x05 (int *cycles);
+
+static void cpu_instr_0x06 (int *cycles);
+
+static void cpu_instr_0x07 (int *cycles);
+
+static void cpu_instr_0x08 (int *cycles);
 static void cpu_instr_0x09(int *cycles);
 static void cpu_instr_0x0a(int *cycles);
 static void cpu_instr_0x0b(int *cycles);
@@ -562,8 +590,6 @@ static uint8_t zeropage[0x7F]; // high mem
 // 0xFF80 -> 0xFFFE - high RAM or zeropage
 // 0xFFFF -> 0xFFFF - interrupt register
 
-static uint8_t crap_shit_fuck_cunt_bitch_nigger[0x1000]; // KILL ME PLZ
-
 static uint8_t boot_rom[256] = {
 	0x31, 0xfe, 0xff, 0xaf, 0x21, 0xff, 0x9f, 0x32, 0xcb, 0x7c, 0x20, 0xfb,
 	0x21, 0x26, 0xff, 0x0e, 0x11, 0x3e, 0x80, 0x32, 0xe2, 0x0c, 0x3e, 0xf3,
@@ -612,61 +638,70 @@ void cpu_load_rom(const char *rom_filename) {
 }
 
 void init_cpu() {
-	cpu.stop = false;
+	cpu.stop             = false;
 	cpu.pc               = 0x0000;
 	cpu.sp               = 0x0000;
-	cpu.ime              = 1;
+	cpu.ime              = 0;
 	cpu.boot_rom_enabled = 1;
+	cpu.interrupt_enable = 0;
+	cpu.interrupt_flag   = 0xE0;
 }
 
-void cpu_run() {
-	int cycles = 4;
+void cpu_run () {
+	int cycles = 0;
 
 	while (!cpu.stop) {
-		if (cpu.ime && cpu.interrupt_enable && cpu.interrupt_flag) {
-			uint8_t fired = cpu.interrupt_flag & cpu.interrupt_enable;
+		handle_interrupts();
 
-			if (fired & 0x1) {
-				cycles = 16;
-				cpu_opcode_rst(0x40);
-				cpu.interrupt_flag &= ~0x1;
-			}
-			else if (fired & 0x2) {
-				cycles = 16;
-				cpu_opcode_rst(0x48);
-				cpu.interrupt_flag &= ~0x2;
-			}
-			else if (fired & 0x4) {
-				cycles = 16;
-				cpu_opcode_rst(0x50);
-				cpu.interrupt_flag &= ~0x4;
-			}
-			else if (fired & 0x8) {
-				cycles = 16;
-				cpu_opcode_rst(0x58);
-				cpu.interrupt_flag &= ~0x8;
-			}
-			else if (fired & 0x10) {
-				cycles = 16;
-				cpu_opcode_rst(0x60);
-				cpu.interrupt_flag &= ~0x10;
-			}
-		} else {
-			cycles = cpu_step();
-		}
+		cycles = cpu_step();
 		gpu_step(cycles);
 	}
 }
 
+static void handle_interrupts (void) {
+	if (cpu.ime == 1) {
+		uint8_t fired = cpu.interrupt_flag & cpu.interrupt_enable;
 
-static int cpu_step(void) {
-	uint8_t instr       = read_byte(cpu.pc++);
-	int     cycles      = cycles_main_opcodes[instr];
+		if (!fired) {
+			return;
+		}
+
+		if (fired & 0x1) {
+			cpu_opcode_interrupt(0x40);
+			cpu.interrupt_flag &= ~(1<<0);
+		}
+		else if (fired & 0x2) {
+			cpu_opcode_interrupt(0x48);
+			cpu.interrupt_flag &= ~(1<<1);
+		}
+		else if (fired & 0x4) {
+			cpu_opcode_interrupt(0x50);
+			cpu.interrupt_flag &= ~(1<<2);
+		}
+		else if (fired & 0x8) {
+			cpu_opcode_interrupt(0x58);
+			cpu.interrupt_flag &= ~(1<<3);
+		}
+		else if (fired & 0x10) {
+			cpu_opcode_interrupt(0x60);
+			cpu.interrupt_flag &= ~(1<<4);
+		}
+	}
+}
+
+uint8_t cpu_get_dma (uint8_t start_addr, uint8_t index) {
+	uint16_t addr = (start_addr<<8) | index;
+	return read_byte(addr);
+}
+
+static int cpu_step (void) {
+	uint8_t instr  = read_byte(cpu.pc++);
+	int     cycles = cycles_main_opcodes[instr];
 	instructions[instr](&cycles);
 	return cycles;
 }
 
-void cpu_request_interrupt(int bit) {
+void cpu_request_interrupt (int bit) {
 	cpu.interrupt_flag |= (1 << bit) | 0xE0;
 }
 
@@ -760,6 +795,7 @@ static void cpu_instr_0x0f(int *cycles) {
 
 static void cpu_instr_0x10(int *cycles) {
 	// STOP
+	println("STOP");
 }
 
 static void cpu_instr_0x11(int *cycles) {
@@ -1708,15 +1744,13 @@ static void cpu_instr_0xbf(int *cycles) {
 static void cpu_instr_0xc0(int *cycles) {
 	// RET NZ
 	if (!GET_FLAG(Z)) {
-		cpu.pc = read_word(cpu.sp);
-		cpu.sp += 2;
+		cpu.pc = stack_pop();
 	}
 }
 
 static void cpu_instr_0xc1(int *cycles) {
 	// POP BC
-	cpu.bc = read_word(cpu.sp);
-	cpu.sp += 2;
+	cpu.bc = stack_pop();
 }
 
 static void cpu_instr_0xc2(int *cycles) {
@@ -1738,8 +1772,7 @@ static void cpu_instr_0xc3(int *cycles) {
 static void cpu_instr_0xc4(int *cycles) {
 	// CALL NZ, a16
 	if (!GET_FLAG(Z)) {
-		cpu.sp -= 2;
-		write_word(cpu.sp, cpu.pc + 2);
+		stack_push(cpu.pc + 2);
 		cpu.pc = read_word(cpu.pc);
 		*cycles += 12;
 	}
@@ -1750,8 +1783,7 @@ static void cpu_instr_0xc4(int *cycles) {
 
 static void cpu_instr_0xc5(int *cycles) {
 	// PUSH BC
-	cpu.sp -= 2;
-	write_word(cpu.sp, cpu.bc);
+	stack_push(cpu.bc);
 }
 
 static void cpu_instr_0xc6(int *cycles) {
@@ -1767,15 +1799,13 @@ static void cpu_instr_0xc7(int *cycles) {
 static void cpu_instr_0xc8(int *cycles) {
 	// RET Z
 	if (GET_FLAG(Z)) {
-		cpu.pc = read_word(cpu.sp);
-		cpu.sp += 2;
+		cpu.pc = stack_pop();
 	}
 }
 
 static void cpu_instr_0xc9(int *cycles) {
 	// RET
-	cpu.pc = read_word(cpu.sp);
-	cpu.sp += 2;
+	cpu.pc = stack_pop();
 }
 
 static void cpu_instr_0xca(int *cycles) {
@@ -1797,8 +1827,7 @@ static void cpu_instr_0xcb(int *cycles) {
 static void cpu_instr_0xcc(int *cycles) {
 	// CALL Z, a16
 	if (GET_FLAG(Z)) {
-		cpu.sp -= 2;
-		write_word(cpu.sp, cpu.pc + 2);
+		stack_push(cpu.pc + 2);
 		cpu.pc = read_word(cpu.pc);
 		*cycles += 12;
 	}
@@ -1809,8 +1838,7 @@ static void cpu_instr_0xcc(int *cycles) {
 
 static void cpu_instr_0xcd(int *cycles) {
 	// CALL a16
-	cpu.sp -= 2;
-	write_word(cpu.sp, cpu.pc + 2);
+	stack_push(cpu.pc + 2);
 	cpu.pc = read_word(cpu.pc);
 }
 
@@ -1827,15 +1855,13 @@ static void cpu_instr_0xcf(int *cycles) {
 static void cpu_instr_0xd0(int *cycles) {
 	// RET NC
 	if (!GET_FLAG(C)) {
-		cpu.pc = read_word(cpu.sp);
-		cpu.sp += 2;
+		cpu.pc = stack_pop();
 	}
 }
 
 static void cpu_instr_0xd1(int *cycles) {
 	// POP DE
-	cpu.de = read_word(cpu.sp);
-	cpu.sp += 2;
+	cpu.de = stack_pop();
 }
 
 static void cpu_instr_0xd2(int *cycles) {
@@ -1851,15 +1877,15 @@ static void cpu_instr_0xd2(int *cycles) {
 
 static void cpu_instr_0xd3(int *cycles) {
 	// TODO CHECKME
+	println("CHECKME");
 }
 
 static void cpu_instr_0xd4(int *cycles) {
 	// CALL NC, a16
-	if (GET_FLAG(C)) {
-		cpu.sp -= 2;
-		write_word(cpu.sp, cpu.pc + 2);
+	if (!GET_FLAG(C)) {
+		stack_push(cpu.pc + 2);
 		cpu.pc = read_word(cpu.pc);
-		cycles += 12;
+		*cycles += 12;
 	}
 	else {
 		cpu.pc += 2;
@@ -1868,8 +1894,7 @@ static void cpu_instr_0xd4(int *cycles) {
 
 static void cpu_instr_0xd5(int *cycles) {
 	// PUSH DE
-	cpu.sp -= 2;
-	write_word(cpu.sp, cpu.de);
+	stack_push(cpu.de);
 }
 
 static void cpu_instr_0xd6(int *cycles) {
@@ -1885,15 +1910,13 @@ static void cpu_instr_0xd7(int *cycles) {
 static void cpu_instr_0xd8(int *cycles) {
 	// RET C
 	if (GET_FLAG(C)) {
-		cpu.pc = read_word(cpu.sp);
-		cpu.sp += 2;
+		cpu.pc = stack_pop();
 	}
 }
 
 static void cpu_instr_0xd9(int *cycles) {
 	// RETI
-	cpu.pc = read_word(cpu.sp);
-	cpu.sp += 2;
+	cpu.pc  = stack_pop();
 	cpu.ime = 1;
 }
 
@@ -1910,15 +1933,15 @@ static void cpu_instr_0xda(int *cycles) {
 
 static void cpu_instr_0xdb(int *cycles) {
 	// TODO CHECKME
+	println("CHECKME");
 }
 
 static void cpu_instr_0xdc(int *cycles) {
 	// CALL C, a16
 	if (GET_FLAG(C)) {
-		cpu.sp -= 2;
-		write_word(cpu.sp, cpu.pc + 2);
+		stack_push(cpu.pc + 2);
 		cpu.pc = read_word(cpu.pc);
-		cycles += 12;
+		*cycles += 12;
 	}
 	else {
 		cpu.pc += 2;
@@ -1927,6 +1950,7 @@ static void cpu_instr_0xdc(int *cycles) {
 
 static void cpu_instr_0xdd(int *cycles) {
 	// TODO CHECKME
+	println("CHECKME");
 }
 
 static void cpu_instr_0xde(int *cycles) {
@@ -1946,8 +1970,7 @@ static void cpu_instr_0xe0(int *cycles) {
 
 static void cpu_instr_0xe1(int *cycles) {
 	// POP HL
-	cpu.hl = read_word(cpu.sp);
-	cpu.sp += 2;
+	cpu.hl = stack_pop();
 }
 
 static void cpu_instr_0xe2(int *cycles) {
@@ -1957,23 +1980,23 @@ static void cpu_instr_0xe2(int *cycles) {
 
 static void cpu_instr_0xe3(int *cycles) {
 	// TODO CHECKME
+	println("CHECKME");
 }
 
 static void cpu_instr_0xe4(int *cycles) {
 	// TODO CHECKME
+	println("CHECKME");
 }
 
 static void cpu_instr_0xe5(int *cycles) {
 	// PUSH HL
-	cpu.sp -= 2;
-	write_word(cpu.sp, cpu.hl);
+	stack_push(cpu.hl);
 }
 
 static void cpu_instr_0xe6(int *cycles) {
 	// AND d8
-	cpu.a &= read_byte(cpu.pc);
+	cpu.a &= read_byte(cpu.pc++);
 	SET_AND_FLAGS();
-	cpu.pc++;
 }
 
 static void cpu_instr_0xe7(int *cycles) {
@@ -1999,14 +2022,17 @@ static void cpu_instr_0xea(int *cycles) {
 
 static void cpu_instr_0xeb(int *cycles) {
 	// TODO CHECKME
+	println("CHECKME");
 }
 
 static void cpu_instr_0xec(int *cycles) {
 	// TODO CHECKME
+	println("CHECKME");
 }
 
 static void cpu_instr_0xed(int *cycles) {
 	// TODO CHECKME
+	println("CHECKME");
 }
 
 static void cpu_instr_0xee(int *cycles) {
@@ -2029,8 +2055,7 @@ static void cpu_instr_0xf0(int *cycles) {
 
 static void cpu_instr_0xf1(int *cycles) {
 	// POP AF
-	cpu.af = read_word(cpu.sp);
-	cpu.sp += 2;
+	cpu.af = stack_pop();
 }
 
 static void cpu_instr_0xf2(int *cycles) {
@@ -2045,12 +2070,12 @@ static void cpu_instr_0xf3(int *cycles) {
 
 static void cpu_instr_0xf4(int *cycles) {
 	// TODO CHECKME
+	println("CHECKME");
 }
 
 static void cpu_instr_0xf5(int *cycles) {
 	// PUSH AF
-	cpu.sp -= 2;
-	write_word(cpu.sp, cpu.af);
+	stack_push(cpu.af);
 }
 
 static void cpu_instr_0xf6(int *cycles) {
@@ -2088,10 +2113,12 @@ static void cpu_instr_0xfb(int *cycles) {
 
 static void cpu_instr_0xfc(int *cycles) {
 	// TODO CHECKME
+	println("CHECKME");
 }
 
 static void cpu_instr_0xfd(int *cycles) {
 	// TODO CHECKME
+	println("CHECKME");
 }
 
 static void cpu_instr_0xfe(int *cycles) {
@@ -2184,14 +2211,31 @@ static inline ALWAYS_INLINE uint16_t read_word(uint16_t addr) {
 	return (hi<<8) | lo;
 }
 
-static inline ALWAYS_INLINE void write_word(uint16_t addr, uint16_t val) {
+static inline ALWAYS_INLINE void write_word (uint16_t addr, uint16_t val) {
 	uint8_t lo = val & 0xFF;
 	uint8_t hi = (val>>8) & 0xFF;
 	write_byte(addr, lo);
 	write_byte(addr + 1, hi);
 }
 
-static void cpu_print_mem(uint16_t begin, uint16_t end) {
+static inline ALWAYS_INLINE void stack_push (uint16_t val) {
+	uint8_t lo = val & 0xFF;
+	uint8_t hi = (val>>8) & 0xFF;
+	cpu.sp--;
+	write_byte(cpu.sp, hi);
+	cpu.sp--;
+	write_byte(cpu.sp, lo);
+}
+
+static inline ALWAYS_INLINE uint16_t stack_pop (void) {
+	uint8_t lo = read_byte(cpu.sp);
+	cpu.sp++;
+	uint8_t hi = read_byte(cpu.sp);
+	cpu.sp++;
+	return (hi<<8) | lo;
+}
+
+static void cpu_print_mem (uint16_t begin, uint16_t end) {
 	for (int i = begin, c = 0; i <= end; ++i) {
 		if (c == 0) {
 			printl("0x%04x:\t", i);
@@ -2206,7 +2250,7 @@ static void cpu_print_mem(uint16_t begin, uint16_t end) {
 	}
 }
 
-static void cpu_dump_state() {
+static void cpu_dump_state () {
 	println("Current INSTRUCTION POS: 0x%04x", cpu.pc - 1);
 	println("CPU:\n Flags:\tZ:%d N:%d H:%d C:%d", GET_FLAG(Z), GET_FLAG(N), GET_FLAG(H), GET_FLAG(C));
 	println("\tPC:0x%04x SP:0x%04x", cpu.pc, cpu.sp);
@@ -2214,8 +2258,10 @@ static void cpu_dump_state() {
 	        , cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.f);
 }
 
-static uint8_t cpu_read_register(uint16_t addr) {
-	switch(addr) {
+static uint8_t fucking_button = 0xFF; // TODO FIX ME OR KILL ME PLZ
+
+static uint8_t cpu_read_register (uint16_t addr) {
+	switch (addr) {
 	case 0xFF0F:
 		return cpu.interrupt_flag;
 
@@ -2236,16 +2282,18 @@ static uint8_t cpu_read_register(uint16_t addr) {
 	case 0xFF50:
 		return cpu.boot_rom_enabled ? 1 : 0;
 
+	case 0xFF00:
+		return fucking_button;
+
 	default:
-		println("reading reg 0x%04x", addr);
-		return crap_shit_fuck_cunt_bitch_nigger[addr%0xFF00];
+		return 0x00;
 	}
 }
 
 static void cpu_write_register(uint16_t addr, uint8_t val) {
 	switch(addr) {
 	case 0xFF0F:
-		cpu.interrupt_flag = val;
+		cpu.interrupt_flag = val | 0xE0;
 		break;
 
 	case 0xFF40:
@@ -2270,9 +2318,12 @@ static void cpu_write_register(uint16_t addr, uint8_t val) {
 		}
 		break;
 
+	case 0xFF00:
+		fucking_button = 0xff;
+		fucking_button &= ~val;
+		break;
+
 	default:
-		crap_shit_fuck_cunt_bitch_nigger[addr%0xFF00] = val;
-		println("writing reg 0x%04x", addr);
 		break;
 	}
 }
@@ -2412,15 +2463,19 @@ static inline void cpu_opcode_swap(enum registers reg) {
 
 // move instr impl here
 
-static inline ALWAYS_INLINE void cpu_opcode_rst(const uint8_t offset) {
+static inline void cpu_opcode_rst (const uint8_t offset) {
+	stack_push(cpu.pc);
+	cpu.pc = 0x0000 + offset;
+}
+
+static inline void cpu_opcode_interrupt (const uint8_t offset) {
+	stack_push(cpu.pc);
+	cpu.pc  = 0x0000 + offset;
 	cpu.ime = 0;
-	cpu.sp -= 2;
-	write_word(cpu.sp, cpu.pc + 1);
-	cpu.pc = read_word(0x0000 + offset);
 }
 
 /* this function only rotate data */
-static inline uint8_t cpu_opcode_rl(uint8_t data) {
+static inline uint8_t cpu_opcode_rl (uint8_t data) {
 	bool c_flag   = GET_FLAG(C);
 	bool new_flag = data & 0xff;
 	data <<= 1;
@@ -2469,19 +2524,42 @@ static inline uint8_t cpu_opcode_rrc(uint8_t value) {
 	return value;
 }
 
-static inline void cpu_opcode_rlca() {
+static inline void cpu_opcode_rlca () {
 	bool new_flag = cpu.a & 0xff;
 	cpu.a <<= 1;
 	cpu.f         = SET_FLAGS(0, 0, 0, new_flag);
 }
 
-static inline void cpu_opcode_rrca() {
+static inline uint8_t cpu_opcode_sla (uint8_t value) {
+	bool new_flag = value & 0x80;
+	value <<= 1;
+	cpu.f = SET_FLAGS(value == 0, 0, 0, new_flag);
+	return value;
+}
+
+static inline uint8_t cpu_opcode_srl (uint8_t value) {
+	bool new_flag = value & 0x01;
+	value >>= 1;
+	cpu.f = SET_FLAGS(value == 0, 0, 0, new_flag);
+	return value;
+}
+
+static inline uint8_t cpu_opcode_sra (uint8_t value) {
+	bool lo_flag = value & 0x01;
+	bool hi_flag = value & 0x80;
+	value >>= 1;
+	value |= (hi_flag<<7);
+	cpu.f = SET_FLAGS(value == 0, 0, 0, lo_flag);
+	return value;
+}
+
+static inline void cpu_opcode_rrca () {
 	bool new_flag = cpu.a & 0x01;
 	cpu.a >>= 1;
 	cpu.f         = SET_FLAGS(0, 0, 0, new_flag);
 }
 
-static inline void cpu_opcode_rl_full(enum registers reg) {
+static inline void cpu_opcode_rl_full (enum registers reg) {
 	switch (reg) {
 	case REG_B:
 		cpu.b = cpu_opcode_rl(cpu.b);
@@ -2597,8 +2675,94 @@ static inline void cpu_opcode_rrc_full(enum registers reg) {
 	}
 }
 
+static inline void cpu_opcode_sla_full (enum registers reg) {
+	switch (reg) {
+	case REG_B:
+		cpu.b = cpu_opcode_sla(cpu.b);
+		break;
+	case REG_C:
+		cpu.c = cpu_opcode_sla(cpu.c);
+		break;
+	case REG_D:
+		cpu.d = cpu_opcode_sla(cpu.d);
+		break;
+	case REG_E:
+		cpu.e = cpu_opcode_sla(cpu.e);
+		break;
+	case REG_H:
+		cpu.h = cpu_opcode_sla(cpu.h);
+		break;
+	case REG_L:
+		cpu.l = cpu_opcode_sla(cpu.l);
+		break;
+	case REG_HL:
+		write_byte(cpu.hl, cpu_opcode_sla(read_byte(cpu.hl)));
+		break;
+	case REG_A:
+		cpu.a = cpu_opcode_sla(cpu.a);
+		break;
+	}
+}
 
-static void cpu_prefix_cb_handle(int *cycles) {
+static inline void cpu_opcode_srl_full (enum registers reg) {
+	switch (reg) {
+	case REG_B:
+		cpu.b = cpu_opcode_srl(cpu.b);
+		break;
+	case REG_C:
+		cpu.c = cpu_opcode_srl(cpu.c);
+		break;
+	case REG_D:
+		cpu.d = cpu_opcode_srl(cpu.d);
+		break;
+	case REG_E:
+		cpu.e = cpu_opcode_srl(cpu.e);
+		break;
+	case REG_H:
+		cpu.h = cpu_opcode_srl(cpu.h);
+		break;
+	case REG_L:
+		cpu.l = cpu_opcode_srl(cpu.l);
+		break;
+	case REG_HL:
+		write_byte(cpu.hl, cpu_opcode_srl(read_byte(cpu.hl)));
+		break;
+	case REG_A:
+		cpu.a = cpu_opcode_srl(cpu.a);
+		break;
+	}
+}
+
+static inline void cpu_opcode_sra_full (enum registers reg) {
+	switch (reg) {
+	case REG_B:
+		cpu.b = cpu_opcode_sra(cpu.b);
+		break;
+	case REG_C:
+		cpu.c = cpu_opcode_sra(cpu.c);
+		break;
+	case REG_D:
+		cpu.d = cpu_opcode_sra(cpu.d);
+		break;
+	case REG_E:
+		cpu.e = cpu_opcode_sra(cpu.e);
+		break;
+	case REG_H:
+		cpu.h = cpu_opcode_sra(cpu.h);
+		break;
+	case REG_L:
+		cpu.l = cpu_opcode_sra(cpu.l);
+		break;
+	case REG_HL:
+		write_byte(cpu.hl, cpu_opcode_sra(read_byte(cpu.hl)));
+		break;
+	case REG_A:
+		cpu.a = cpu_opcode_sra(cpu.a);
+		break;
+	}
+}
+
+static void cpu_prefix_cb_handle (int *cycles) {
 	uint8_t instruction = read_byte(cpu.pc++);
 	*cycles += cycles_0xCB_opcodes[instruction];
 	enum registers reg = map_register(instruction);
@@ -2620,16 +2784,16 @@ static void cpu_prefix_cb_handle(int *cycles) {
 		cpu_opcode_rr_full(reg);
 		break;
 	case 0x20: // SLA
-		println("TODO SLA");
+		cpu_opcode_sla_full(reg);
 		break;
 	case 0x28: // SRA
-		println("TODO SRA");
+		cpu_opcode_sra_full(reg);
 		break;
 	case 0x30: // SWAP
 		cpu_opcode_swap(reg);
 		break;
 	case 0x38: // SRL
-		println("TODO SRL");
+		cpu_opcode_srl_full(reg);
 		break;
 	case 0x40: // BIT 0
 		cpu_opcode_bit(reg, 0);
@@ -2727,8 +2891,8 @@ static inline void cpu_opcode_daa() {
 static inline void cpu_opcode_add_a(uint8_t value) {
 	bool h_flag = (cpu.a & 0x0F + value & 0x0F) > 0x10;
 	bool c_flag = ((uint16_t) cpu.a + value) > 0xFF;
-	cpu.a += value;
-	cpu.f       = SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
+	cpu.a = cpu.a + value;
+	cpu.f = SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
 }
 
 static inline void cpu_opcode_add_a_ptr_hl() {
