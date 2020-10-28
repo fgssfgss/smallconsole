@@ -50,7 +50,6 @@ void gpu_step(int cycles) {
 	bool    request_interrupt = false;
 
 	if (!(state.lcd_control & 0x80)) {
-		screen_clear();
 		screen_vsync();
 		state.scanline_counter = 456;
 		state.curline          = 0;
@@ -110,14 +109,13 @@ void gpu_step(int cycles) {
 		if (state.curline > 153) {
 			state.curline = 0;
 
-			gpu_render_sprites();
-
 			screen_vsync();
 		}
 
 		state.scanline_counter += 456;
 
 		if (state.curline == SCREEN_HEIGHT) {
+			gpu_render_sprites();
 			cpu_request_interrupt(0);
 		}
 	}
@@ -140,7 +138,7 @@ static void gpu_render_sprites (void) {
 		bool use_first_palette = (sprite_a & 0x10) ? true : false; // TODO ALL LOGIC WITH PALETTES
 		bool flip_x            = (sprite_a & 0x20) ? true : false;
 		bool flip_y            = (sprite_a & 0x40) ? true : false;
-		bool lower_prio        = (sprite_a & 0x80) ? true : false;
+		bool lower_prio        = (sprite_a & 0x80) ? true : false; // TODO PRIORITY LOGIC
 
 		if (sprite_y == 0 || sprite_y >= SCREEN_HEIGHT + 16) {
 			continue;
@@ -169,11 +167,6 @@ static void gpu_render_sprites (void) {
 
 				int pixel_color = (tile_hi_bit<<1) | tile_lo_bit;
 
-				// TODO: check this crap
-				if (lower_prio && pixel_color != 255) {
-					continue;
-				}
-
 				uint8_t color = color_to_default_palette(pixel_color);
 				screen_put_pixel(screen_x + xpos, screen_y + ypos, color, color, color);
 			}
@@ -190,7 +183,6 @@ static void gpu_render_bg (int scanline) {
 	uint8_t  tile_row = ypos/8;
 
 	if (!(state.lcd_control & 0x1)) {
-		screen_clear();
 		return;
 	}
 
@@ -224,12 +216,12 @@ uint8_t gpu_oam_read(uint16_t addr) {
 }
 
 void gpu_write(uint16_t addr, uint8_t val) {
-	//println("gpu mem write 0x%04x = 0x%02x", addr + 0x8000, val);
+	println("gpu mem write 0x%04x = 0x%02x", addr + 0x8000, val);
 	vram[addr] = val;
 }
 
 uint8_t gpu_read(uint16_t addr) {
-	//println("gpu mem read 0x%02x at addr 0x%04x", vram[addr], addr + 0x8000);
+	println("gpu mem read 0x%02x at addr 0x%04x", vram[addr], addr + 0x8000);
 	return vram[addr];
 }
 
@@ -239,6 +231,7 @@ void gpu_write_reg(uint16_t addr, uint8_t val) {
 		state.lcd_control = val;
 		break;
 	case 0xFF41:
+		println("0xFF41 == %02x", val);
 		state.lcd_stat = val;
 		break;
 	case 0xFF42:
@@ -271,6 +264,7 @@ void gpu_write_reg(uint16_t addr, uint8_t val) {
 	case 0xFF46:
 		for (uint8_t index = 0; index <= 0x9F; ++index) {
 			oam[index] = cpu_get_dma(val, index);
+			println("oam at 0xFE%02x = 0x%02x", index, oam[index]);
 		}
 		break;
 	default:

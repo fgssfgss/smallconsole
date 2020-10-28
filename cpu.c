@@ -158,21 +158,13 @@ static inline void cpu_opcode_rst (const uint8_t offset);
 static inline void cpu_opcode_interrupt (const uint8_t offset);
 
 static void cpu_instr_0x00 (int *cycles);
-
 static void cpu_instr_0x01 (int *cycles);
-
 static void cpu_instr_0x02 (int *cycles);
-
 static void cpu_instr_0x03 (int *cycles);
-
 static void cpu_instr_0x04 (int *cycles);
-
 static void cpu_instr_0x05 (int *cycles);
-
 static void cpu_instr_0x06 (int *cycles);
-
 static void cpu_instr_0x07 (int *cycles);
-
 static void cpu_instr_0x08 (int *cycles);
 static void cpu_instr_0x09(int *cycles);
 static void cpu_instr_0x0a(int *cycles);
@@ -647,10 +639,10 @@ void init_cpu() {
 	cpu.interrupt_flag   = 0xE0;
 }
 
-void cpu_run () {
+void cpu_tick () {
 	int cycles = 0;
 
-	while (!cpu.stop) {
+	if (!cpu.stop) {
 		handle_interrupts();
 
 		cycles = cpu_step();
@@ -659,7 +651,7 @@ void cpu_run () {
 }
 
 static void handle_interrupts (void) {
-	if (cpu.ime == 1) {
+	if (cpu.ime) {
 		uint8_t fired = cpu.interrupt_flag & cpu.interrupt_enable;
 
 		if (!fired) {
@@ -667,10 +659,12 @@ static void handle_interrupts (void) {
 		}
 
 		if (fired & 0x1) {
+			println("fired");
 			cpu_opcode_interrupt(0x40);
 			cpu.interrupt_flag &= ~(1<<0);
 		}
 		else if (fired & 0x2) {
+			println("fired2");
 			cpu_opcode_interrupt(0x48);
 			cpu.interrupt_flag &= ~(1<<1);
 		}
@@ -883,7 +877,7 @@ static void cpu_instr_0x1f(int *cycles) {
 static void cpu_instr_0x20(int *cycles) {
 	// JR NZ, r8
 	if (!GET_FLAG(Z)) {
-		cpu.pc = (int16_t) cpu.pc + (int8_t) read_byte(cpu.pc) + 1;
+		cpu.pc = (uint16_t) cpu.pc + (int8_t) read_byte(cpu.pc) + 1;
 		*cycles += 4;
 	}
 	else {
@@ -2171,9 +2165,12 @@ static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr) {
 
 static inline ALWAYS_INLINE void write_byte(uint16_t addr, uint8_t val) {
 	if (addr >= 0 && addr <= 0x7FFF) {
-		rom0[addr] = val;
+		//rom0[addr] = val;
+		if (addr == 0x2000) {
+			println("WTF FINDME %02x[PC IS 0x%04x]", val, cpu.pc);
+		}
 		if (addr >= 0 && addr <= 0x00FF && cpu.boot_rom_enabled) {
-			boot_rom[addr] = val;
+			//boot_rom[addr] = val;
 		}
 	}
 	else if (addr >= 0x8000 && addr <= 0x9FFF) {
