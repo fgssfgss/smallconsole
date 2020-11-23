@@ -33,7 +33,7 @@ enum registers {
 #define SET_xOR_FLAGS() (cpu.f = SET_FLAGS(cpu.a == 0, 0, 0, 0))
 
 // bit ops flags
-#define SET_BIT_FLAGS(bit, reg) (cpu.f = SET_FLAGS(!(reg & (0x1 << bit)), 0, 0, GET_FLAG(C)))
+#define SET_BIT_FLAGS(bit, reg) (cpu.f = SET_FLAGS(!(reg & (0x1 << bit)), 0, 1, GET_FLAG(C)))
 #define SET_SWAP_FLAGS(data) (cpu.f = SET_FLAGS(data == 0, 0, 0, 0))
 
 
@@ -659,12 +659,10 @@ static void handle_interrupts (void) {
 		}
 
 		if (fired & 0x1) {
-			println("fired");
 			cpu_opcode_interrupt(0x40);
 			cpu.interrupt_flag &= ~(1<<0);
 		}
 		else if (fired & 0x2) {
-			println("fired2");
 			cpu_opcode_interrupt(0x48);
 			cpu.interrupt_flag &= ~(1<<1);
 		}
@@ -877,7 +875,7 @@ static void cpu_instr_0x1f(int *cycles) {
 static void cpu_instr_0x20(int *cycles) {
 	// JR NZ, r8
 	if (!GET_FLAG(Z)) {
-		cpu.pc = (uint16_t) cpu.pc + (int8_t) read_byte(cpu.pc) + 1;
+		cpu.pc = (int16_t) cpu.pc + (int8_t) read_byte(cpu.pc) + 1;
 		*cycles += 4;
 	}
 	else {
@@ -2165,13 +2163,7 @@ static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr) {
 
 static inline ALWAYS_INLINE void write_byte(uint16_t addr, uint8_t val) {
 	if (addr >= 0 && addr <= 0x7FFF) {
-		//rom0[addr] = val;
-		if (addr == 0x2000) {
-			println("WTF FINDME %02x[PC IS 0x%04x]", val, cpu.pc);
-		}
-		if (addr >= 0 && addr <= 0x00FF && cpu.boot_rom_enabled) {
-			//boot_rom[addr] = val;
-		}
+		// mapper implementation
 	}
 	else if (addr >= 0x8000 && addr <= 0x9FFF) {
 		gpu_write(addr%0x8000, val);
@@ -2474,18 +2466,18 @@ static inline void cpu_opcode_interrupt (const uint8_t offset) {
 /* this function only rotate data */
 static inline uint8_t cpu_opcode_rl (uint8_t data) {
 	bool c_flag   = GET_FLAG(C);
-	bool new_flag = data & 0xff;
+	bool new_flag = data & 0x80;
 	data <<= 1;
-	data |= !!c_flag;
+	data |= (!!c_flag<<0);
 	cpu.f = SET_FLAGS(data == 0, 0, 0, new_flag);
 	return data;
 }
 
 static inline void cpu_opcode_rla() {
 	bool c_flag   = GET_FLAG(C);
-	bool new_flag = cpu.a & 0xff;
+	bool new_flag = cpu.a & 0x80;
 	cpu.a <<= 1;
-	cpu.a |= !!c_flag;
+	cpu.a |= (!!c_flag<<0);
 	cpu.f         = SET_FLAGS(0, 0, 0, new_flag);
 }
 
@@ -2508,8 +2500,9 @@ static inline void cpu_opcode_rra() {
 }
 
 static inline uint8_t cpu_opcode_rlc(uint8_t value) {
-	bool new_flag = value & 0xff;
+	bool new_flag = value & 0x80;
 	value <<= 1;
+	value |= !!new_flag;
 	cpu.f = SET_FLAGS(value == 0, 0, 0, new_flag);
 	return value;
 }
@@ -2517,13 +2510,15 @@ static inline uint8_t cpu_opcode_rlc(uint8_t value) {
 static inline uint8_t cpu_opcode_rrc(uint8_t value) {
 	bool new_flag = value & 0x01;
 	value >>= 1;
+	value |= (!!new_flag<<7);
 	cpu.f = SET_FLAGS(value == 0, 0, 0, new_flag);
 	return value;
 }
 
 static inline void cpu_opcode_rlca () {
-	bool new_flag = cpu.a & 0xff;
+	bool new_flag = cpu.a & 0x80;
 	cpu.a <<= 1;
+	cpu.a |= !!new_flag;
 	cpu.f         = SET_FLAGS(0, 0, 0, new_flag);
 }
 
@@ -2553,6 +2548,7 @@ static inline uint8_t cpu_opcode_sra (uint8_t value) {
 static inline void cpu_opcode_rrca () {
 	bool new_flag = cpu.a & 0x01;
 	cpu.a >>= 1;
+	cpu.a |= (!!new_flag<<7);
 	cpu.f         = SET_FLAGS(0, 0, 0, new_flag);
 }
 
@@ -2886,8 +2882,8 @@ static inline void cpu_opcode_daa() {
 }
 
 static inline void cpu_opcode_add_a(uint8_t value) {
-	bool h_flag = (cpu.a & 0x0F + value & 0x0F) > 0x10;
-	bool c_flag = ((uint16_t) cpu.a + value) > 0xFF;
+	bool h_flag = ((cpu.a & 0x0F) + (value & 0x0F)) > 0xf;
+	bool c_flag = (cpu.a + value) > 0xFF;
 	cpu.a = cpu.a + value;
 	cpu.f = SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
 }
@@ -2901,11 +2897,11 @@ static inline void cpu_opcode_add_a_d8() {
 }
 
 static inline void cpu_opcode_adc_a(uint8_t value) {
-	bool c_flag_now = GET_FLAG(C);
-	bool h_flag     = (cpu.a & 0x0F + value & 0x0F + c_flag_now) > 0x10;
-	bool c_flag     = ((uint16_t) cpu.a + value + c_flag_now) > 0xFF;
-	cpu.a += (value + c_flag_now);
-	cpu.f           = SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
+	uint8_t c_flag_now = GET_FLAG(C);
+	bool    h_flag     = ((cpu.a & 0x0F) + (value & 0x0F) + c_flag_now) > 0xf;
+	bool    c_flag     = ((uint16_t) cpu.a + value + c_flag_now) > 0xFF;
+	cpu.a = cpu.a + value + c_flag_now;
+	cpu.f = SET_FLAGS(cpu.a == 0, 0, h_flag, c_flag);
 }
 
 static inline void cpu_opcode_adc_a_ptr_hl() {
@@ -2917,10 +2913,10 @@ static inline void cpu_opcode_adc_a_d8() {
 }
 
 static inline void cpu_opcode_sub_a(uint8_t value) {
-	bool h_flag = (cpu.a & 0x0F - value & 0x0F) > 0x10;
-	bool c_flag = ((uint16_t) cpu.a - value) > 0xFF;
-	cpu.a -= value;
-	cpu.f       = SET_FLAGS(cpu.a == 0, 1, h_flag, c_flag);
+	int  res    = cpu.a - value;
+	bool h_flag = ((cpu.a & 0x0F) - (value & 0x0F)) < 0;
+	cpu.a = res;
+	cpu.f = SET_FLAGS(cpu.a == 0, 1, h_flag, res < 0);
 }
 
 static inline void cpu_opcode_sub_a_ptr_hl() {
@@ -2932,11 +2928,11 @@ static inline void cpu_opcode_sub_a_ptr_d8() {
 }
 
 static inline void cpu_opcode_sbc_a(uint8_t value) {
-	bool c_flag_now = GET_FLAG(C);
-	bool h_flag     = (cpu.a & 0x0F - (value & 0x0F + c_flag_now)) > 0x10;
-	bool c_flag     = ((uint16_t) cpu.a - (value + c_flag_now)) > 0xFF;
-	cpu.a -= (value + c_flag_now);
-	cpu.f           = SET_FLAGS(cpu.a == 0, 1, h_flag, c_flag);
+	uint8_t c_flag_now = GET_FLAG(C);
+	int     res        = cpu.a - value - c_flag_now;
+	bool    h_flag     = ((cpu.a & 0x0F) - ((value & 0x0F) - c_flag_now)) < 0;
+	cpu.a = res;
+	cpu.f = SET_FLAGS(cpu.a == 0, 1, h_flag, res < 0);
 }
 
 static inline void cpu_opcode_sbc_a_ptr_hl() {
@@ -2948,10 +2944,10 @@ static inline void cpu_opcode_sbc_a_ptr_d8() {
 }
 
 static inline void cpu_opcode_cp_a(uint8_t value) {
-	bool h_flag = (cpu.a & 0x0F - value & 0x0F) > 0x10;
-	bool c_flag = ((uint16_t) cpu.a - value) > 0xFF;
-	bool z_flag = (cpu.a - value) == 0;
-	cpu.f = SET_FLAGS(z_flag, 1, h_flag, c_flag);
+	int  res    = cpu.a - value;
+	bool h_flag = ((cpu.a & 0x0F) - (value & 0x0F)) < 0;
+	bool z_flag = (res == 0);
+	cpu.f = SET_FLAGS(z_flag, 1, h_flag, res < 0);
 }
 
 static inline void cpu_opcode_cp_a_ptr_hl() {
@@ -2963,41 +2959,37 @@ static inline void cpu_opcode_cp_a_ptr_d8() {
 }
 
 static inline void cpu_opcode_add_hl(uint16_t value) {
-	bool h_flag = (cpu.hl & 0x800 + value & 0x800) > 0x1000;
-	bool c_flag = ((uint32_t) cpu.hl + value) > 0xFFFF;
-	bool z_flag = GET_FLAG(Z);
+	bool    h_flag = (cpu.hl & 0x800 + value & 0x800) > 0x1000;
+	uint8_t c_flag = ((uint32_t) cpu.hl + value) > 0xFFFF;
+	bool    z_flag = GET_FLAG(Z);
 	cpu.hl += value;
-	cpu.f       = SET_FLAGS(z_flag, 0, h_flag, c_flag);
+	cpu.f          = SET_FLAGS(z_flag, 0, h_flag, c_flag);
 }
 
 static inline void cpu_opcode_add_sp(int8_t value) {
-	bool h_flag = (cpu.sp & 0x0F + value & 0x0F) > 0x10;
-	bool c_flag = ((uint16_t) cpu.sp + value) > 0xFF;
-	cpu.a += value;
-	cpu.f       = SET_FLAGS(0, 0, h_flag, c_flag);
+	bool    h_flag = (cpu.sp & 0x0F + value & 0x0F) > 0x10;
+	uint8_t c_flag = ((uint16_t) cpu.sp + value) > 0xFF;
+	cpu.sp += value;
+	cpu.f          = SET_FLAGS(0, 0, h_flag, c_flag);
 }
 
 static inline void cpu_opcode_ccf() {
-	bool z_flag = GET_FLAG(Z);
-	bool c_flag = GET_FLAG(C);
-	cpu.f = SET_FLAGS(z_flag, 0, 0, !c_flag);
+	cpu.f = SET_FLAGS(GET_FLAG(Z), 0, 0, !GET_FLAG(C));
 }
 
 static inline void cpu_opcode_scf() {
-	bool z_flag = GET_FLAG(Z);
-	cpu.f = SET_FLAGS(z_flag, 0, 0, true);
+	cpu.f = SET_FLAGS(GET_FLAG(Z), 0, 0, true);
 }
 
 static inline void cpu_opcode_cpl() {
-	bool z_flag = GET_FLAG(Z);
-	bool c_flag = GET_FLAG(C);
 	cpu.a = ~cpu.a;
-	cpu.f = SET_FLAGS(z_flag, 0, 0, c_flag);
+	cpu.f = SET_FLAGS(GET_FLAG(Z), 0, 0, GET_FLAG(C));
 }
 
 static inline void cpu_opcode_ld_hl_sp(int8_t value) {
-	bool h_flag = (cpu.sp & 0x0F + value & 0x0F) > 0x10;
-	bool c_flag = ((uint16_t) cpu.sp + value) > 0xFF;
-	cpu.hl = cpu.sp + value;
+	int  res    = cpu.sp + value;
+	bool h_flag = ((value ^ cpu.sp ^ (res & 0xFFFF)) & 0x10) == 0x10;
+	bool c_flag = ((value ^ cpu.sp ^ (res & 0xFFFF)) & 0x100) == 0x100;
 	cpu.f  = SET_FLAGS(0, 0, h_flag, c_flag);
+	cpu.hl = (uint16_t) res;
 }
