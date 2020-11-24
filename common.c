@@ -87,16 +87,16 @@ void keyboard_handle_input (SDL_Event *event) {
 	case SDLK_DOWN:
 		key = JOYPAD_DOWN;
 		break;
-	case SDLK_a:
+	case SDLK_z:
 		key = JOYPAD_BUTTON_A;
 		break;
-	case SDLK_s:
+	case SDLK_x:
 		key = JOYPAD_BUTTON_B;
 		break;
-	case SDLK_SPACE:
+	case SDLK_RETURN:
 		key = JOYPAD_BUTTON_START;
 		break;
-	case SDLK_TAB:
+	case SDLK_SPACE:
 		key = JOYPAD_BUTTON_SELECT;
 		break;
 	default:
