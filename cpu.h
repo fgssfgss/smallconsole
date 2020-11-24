@@ -3,8 +3,6 @@
 
 void init_cpu ();
 
-void cpu_load_rom (const char *rom_filename);
-
 void cpu_tick ();
 
 void cpu_request_interrupt (int bit);

@@ -1,6 +1,8 @@
 #include "common.h"
 #include "cpu.h"
 #include "gpu.h"
+#include "joypad.h"
+#include "rom.h"
 
 enum flags {
 	C = 4,
@@ -566,7 +568,6 @@ static instruction_handler instructions[256] = {
 static cpu_state cpu;
 
 // ALL KINDS OF MEMORY
-static uint8_t rom0[0x8000]; // rom banks 0..1
 static uint8_t sram[0x4000]; // switchable ram from cartridge
 static uint8_t iram[0x4000]; // internal ram, 8kbytes
 static uint8_t zeropage[0x7F]; // high mem
@@ -606,28 +607,6 @@ static uint8_t boot_rom[256] = {
 	0xf5, 0x06, 0x19, 0x78, 0x86, 0x23, 0x05, 0x20, 0xfb, 0x86, 0x20, 0xfe,
 	0x3e, 0x01, 0xe0, 0x50
 };
-
-
-void cpu_load_rom(const char *rom_filename) {
-	FILE *rom    = fopen(rom_filename, "rb");
-	long romsize = 0;
-	if (rom == NULL) {
-		println("Failed to open rom file \'%s\'", rom_filename);
-		return;
-	}
-
-	fseek(rom, 0, SEEK_END);
-	romsize = ftell(rom);
-	fseek(rom, 0, SEEK_SET);  /* same as rewind(f); */
-
-	if (romsize != 0x8000) {
-		println("File size is not supported");
-		return;
-	}
-
-	fread(rom0, 0x1, 0x8000, rom);
-	fclose(rom);
-}
 
 void init_cpu() {
 	cpu.stop             = false;
@@ -2126,7 +2105,7 @@ static void cpu_instr_0xff(int *cycles) {
 static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr) {
 	uint8_t val = 0;
 	if (addr >= 0 && addr <= 0x7FFF) {
-		val = rom0[addr];
+		val = rom_read(addr);
 		if (addr >= 0 && addr <= 0x00FF && cpu.boot_rom_enabled) {
 			val = boot_rom[addr];
 		}
@@ -2163,7 +2142,7 @@ static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr) {
 
 static inline ALWAYS_INLINE void write_byte(uint16_t addr, uint8_t val) {
 	if (addr >= 0 && addr <= 0x7FFF) {
-		// mapper implementation
+		rom_write(addr, val);
 	}
 	else if (addr >= 0x8000 && addr <= 0x9FFF) {
 		gpu_write(addr%0x8000, val);
@@ -2247,8 +2226,6 @@ static void cpu_dump_state () {
 	        , cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.f);
 }
 
-static uint8_t fucking_button = 0xFF; // TODO FIX ME OR KILL ME PLZ
-
 static uint8_t cpu_read_register (uint16_t addr) {
 	switch (addr) {
 	case 0xFF0F:
@@ -2272,7 +2249,7 @@ static uint8_t cpu_read_register (uint16_t addr) {
 		return cpu.boot_rom_enabled ? 1 : 0;
 
 	case 0xFF00:
-		return fucking_button;
+		return joypad_read_reg();
 
 	default:
 		return 0x00;
@@ -2308,8 +2285,7 @@ static void cpu_write_register(uint16_t addr, uint8_t val) {
 		break;
 
 	case 0xFF00:
-		fucking_button = 0xff;
-		fucking_button &= ~val;
+		joypad_write_reg(val);
 		break;
 
 	default:
