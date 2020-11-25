@@ -258,7 +258,7 @@ static void gpu_render_window (int scanline) {
 	const uint16_t tile_base   = (state.lcd_control & CTRL_BG_WIN_TILE_SELECT) ? 0x0000 : 0x0800;
 	const uint8_t  tile_size   = 16;
 
-	if (!(state.lcd_control & CTRL_WIN_ENABLE)) {
+	if (!(state.lcd_control & CTRL_BG_WIN_ENABLE) || !(state.lcd_control & CTRL_WIN_ENABLE)) {
 		return;
 	}
 
@@ -304,14 +304,14 @@ static void gpu_render_bg (int scanline) {
 	const uint16_t tile_base = (state.lcd_control & CTRL_BG_WIN_TILE_SELECT) ? 0x0000 : 0x0800;
 	const uint8_t  tile_size = 16;
 
-	uint16_t ypos     = state.scrolly + scanline;
-	uint8_t  tile_row = ypos/8;
+	int ypos     = state.scrolly + scanline;
+	int tile_row = ypos/8;
 
 	if (!(state.lcd_control & CTRL_BG_WIN_ENABLE)) {
 		return;
 	}
 
-	for (uint8_t pixel = 0; pixel < 160; ++pixel) {
+	for (int pixel = 0; pixel < 160; ++pixel) {
 		uint16_t xpos       = pixel + state.scrollx;
 		uint8_t  tile_col   = xpos/8;
 		uint16_t tile_start = 0;

@@ -4,18 +4,18 @@
 #include "joypad.h"
 
 int main(int argc, char *argv[]) {
-	SDL_Event e;
+	SDL_Event e    = {0};
 	bool      quit = false;
 
-	init_common();
+	common_init();
 
 	println("EMULATOR INIT");
 
-	file_load_rom("tetris.gb");
+	file_load_rom("11.gb");
 
 	keyboard_set_handlers(joypad_key_down, joypad_key_up);
 	gpu_init();
-	init_cpu();
+	cpu_init();
 
 	while (!quit) {
 		while (SDL_PollEvent(&e) != 0) {
@@ -31,6 +31,6 @@ int main(int argc, char *argv[]) {
 		cpu_tick();
 	}
 
-	shutdown_common();
+	common_shutdown();
 	return 0;
 }

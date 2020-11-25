@@ -16,9 +16,9 @@
 #define SCREEN_WIDTH  160
 #define SCREEN_HEIGHT 144
 
-void init_common ();
+void common_init ();
 
-void shutdown_common ();
+void common_shutdown ();
 
 void println (const char *message, ...);
 

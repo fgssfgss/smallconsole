@@ -11,7 +11,7 @@ static SDL_Renderer *renderer        = NULL;
 static key_handler  key_up_handler   = NULL;
 static key_handler  key_down_handler = NULL;
 
-void init_common (void) {
+void common_init (void) {
 	log = stdout;
 
 	SDL_Init(SDL_INIT_VIDEO);
@@ -20,7 +20,7 @@ void init_common (void) {
 		"smallconsole", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, 0
 	);
 
-	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 }
 
 void file_load_rom (const char *rom_filename) {
@@ -40,11 +40,12 @@ void file_load_rom (const char *rom_filename) {
 	fread(romdata, 0x1, romsize, rom);
 	fclose(rom);
 
-	if (romdata[0x0147] != 0x00) {
+	if (romdata[0x0147] != 0x00 && romdata[0x0147] != 0x01) {
 		println("Mapper is not supported");
 		return;
 	}
 	else {
+		println("Actual filesize is 0x%x", romsize);
 		println("Mapper is %02x", romdata[0x0147]);
 		println("ROM size is %02x", romdata[0x0148]);
 		println("RAM size is %02x", romdata[0x0149]);
@@ -111,7 +112,7 @@ void keyboard_handle_input (SDL_Event *event) {
 	}
 }
 
-void shutdown_common (void) {
+void common_shutdown (void) {
 	SDL_DestroyWindow(window);
 	SDL_Quit();
 }
