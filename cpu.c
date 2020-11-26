@@ -1,6 +1,8 @@
 #include "common.h"
 #include "cpu.h"
 #include "gpu.h"
+#include "joypad.h"
+#include "rom.h"
 
 enum flags {
 	C = 4,
@@ -27,8 +29,8 @@ enum registers {
                     ((!!(zflag) << Z) | (!!(nflag) << N) | (!!(hflag) << H) | (!!(cflag) << C) | 0)
 
 // TODO: fixme: H flag set
-#define SET_INC_FLAGS(data) (cpu.f = SET_FLAGS(data == 0, 0, (((data & 0xF) + ((data-1) & 0xF)) > 0xF), GET_FLAG(C)))
-#define SET_DEC_FLAGS(data) (cpu.f = SET_FLAGS(data == 0, 1, (((data & 0xF) + ((data+1) & 0xF)) > 0xF), GET_FLAG(C)))
+#define SET_INC_FLAGS(data) (cpu.f = SET_FLAGS(data == 0, 0, ((data & 0x0F) == 0x00), GET_FLAG(C)))
+#define SET_DEC_FLAGS(data) (cpu.f = SET_FLAGS(data == 0, 1, ((data & 0x0F) == 0x0F), GET_FLAG(C)))
 #define SET_AND_FLAGS() (cpu.f = SET_FLAGS(cpu.a == 0, 0, 1, 0))
 #define SET_xOR_FLAGS() (cpu.f = SET_FLAGS(cpu.a == 0, 0, 0, 0))
 
@@ -58,6 +60,12 @@ static inline ALWAYS_INLINE void write_word (uint16_t addr, uint16_t val);
 static inline ALWAYS_INLINE void stack_push (uint16_t val);
 
 static inline ALWAYS_INLINE uint16_t stack_pop (void);
+
+static uint8_t serial_read (void);
+
+static void serial_write (uint8_t data);
+
+static void serial_write_control (uint8_t data);
 
 static enum registers map_register (uint8_t opcode);
 
@@ -566,7 +574,6 @@ static instruction_handler instructions[256] = {
 static cpu_state cpu;
 
 // ALL KINDS OF MEMORY
-static uint8_t rom0[0x8000]; // rom banks 0..1
 static uint8_t sram[0x4000]; // switchable ram from cartridge
 static uint8_t iram[0x4000]; // internal ram, 8kbytes
 static uint8_t zeropage[0x7F]; // high mem
@@ -607,29 +614,7 @@ static uint8_t boot_rom[256] = {
 	0x3e, 0x01, 0xe0, 0x50
 };
 
-
-void cpu_load_rom(const char *rom_filename) {
-	FILE *rom    = fopen(rom_filename, "rb");
-	long romsize = 0;
-	if (rom == NULL) {
-		println("Failed to open rom file \'%s\'", rom_filename);
-		return;
-	}
-
-	fseek(rom, 0, SEEK_END);
-	romsize = ftell(rom);
-	fseek(rom, 0, SEEK_SET);  /* same as rewind(f); */
-
-	if (romsize != 0x8000) {
-		println("File size is not supported");
-		return;
-	}
-
-	fread(rom0, 0x1, 0x8000, rom);
-	fclose(rom);
-}
-
-void init_cpu() {
+void cpu_init () {
 	cpu.stop             = false;
 	cpu.pc               = 0x0000;
 	cpu.sp               = 0x0000;
@@ -647,6 +632,22 @@ void cpu_tick () {
 
 		cycles = cpu_step();
 		gpu_step(cycles);
+	}
+}
+
+static uint8_t serial_data = 0x0;
+
+static uint8_t serial_read (void) {
+	return serial_data;
+}
+
+static void serial_write (uint8_t data) {
+	serial_data = data;
+}
+
+static void serial_write_control (uint8_t data) {
+	if (data & (1<<7)) {
+		printl("%c", serial_data);
 	}
 }
 
@@ -2048,6 +2049,7 @@ static void cpu_instr_0xf0(int *cycles) {
 static void cpu_instr_0xf1(int *cycles) {
 	// POP AF
 	cpu.af = stack_pop();
+	cpu.f &= ~0xF;
 }
 
 static void cpu_instr_0xf2(int *cycles) {
@@ -2126,7 +2128,7 @@ static void cpu_instr_0xff(int *cycles) {
 static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr) {
 	uint8_t val = 0;
 	if (addr >= 0 && addr <= 0x7FFF) {
-		val = rom0[addr];
+		val = rom_read(addr);
 		if (addr >= 0 && addr <= 0x00FF && cpu.boot_rom_enabled) {
 			val = boot_rom[addr];
 		}
@@ -2163,7 +2165,7 @@ static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr) {
 
 static inline ALWAYS_INLINE void write_byte(uint16_t addr, uint8_t val) {
 	if (addr >= 0 && addr <= 0x7FFF) {
-		// mapper implementation
+		rom_write(addr, val);
 	}
 	else if (addr >= 0x8000 && addr <= 0x9FFF) {
 		gpu_write(addr%0x8000, val);
@@ -2247,8 +2249,6 @@ static void cpu_dump_state () {
 	        , cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.f);
 }
 
-static uint8_t fucking_button = 0xFF; // TODO FIX ME OR KILL ME PLZ
-
 static uint8_t cpu_read_register (uint16_t addr) {
 	switch (addr) {
 	case 0xFF0F:
@@ -2272,7 +2272,13 @@ static uint8_t cpu_read_register (uint16_t addr) {
 		return cpu.boot_rom_enabled ? 1 : 0;
 
 	case 0xFF00:
-		return fucking_button;
+		return joypad_read_reg();
+
+	case 0xFF01:
+		return serial_read();
+
+	case 0xFF02:
+		return 0xff;
 
 	default:
 		return 0x00;
@@ -2308,8 +2314,15 @@ static void cpu_write_register(uint16_t addr, uint8_t val) {
 		break;
 
 	case 0xFF00:
-		fucking_button = 0xff;
-		fucking_button &= ~val;
+		joypad_write_reg(val);
+		break;
+
+	case 0xFF01:
+		serial_write(val);
+		break;
+
+	case 0xFF02:
+		serial_write_control(val);
 		break;
 
 	default:
@@ -2358,25 +2371,25 @@ static inline void cpu_opcode_set(enum registers reg, uint8_t bit) {
 		cpu.b |= (1<<bit);
 		break;
 	case REG_C:
-		cpu.b |= (1<<bit);
+		cpu.c |= (1<<bit);
 		break;
 	case REG_D:
-		cpu.b |= (1<<bit);
+		cpu.d |= (1<<bit);
 		break;
 	case REG_E:
-		cpu.b |= (1<<bit);
+		cpu.e |= (1<<bit);
 		break;
 	case REG_H:
-		cpu.b |= (1<<bit);
+		cpu.h |= (1<<bit);
 		break;
 	case REG_L:
-		cpu.b |= (1<<bit);
+		cpu.l |= (1<<bit);
 		break;
 	case REG_HL:
 		write_byte(cpu.hl, read_byte(cpu.hl) | (1<<bit));
 		break;
 	case REG_A:
-		cpu.b |= (1<<bit);
+		cpu.a |= (1<<bit);
 		break;
 
 	}
@@ -2495,7 +2508,7 @@ static inline void cpu_opcode_rra() {
 	bool c_flag   = GET_FLAG(C);
 	bool new_flag = cpu.a & 0x01;
 	cpu.a >>= 1;
-	cpu.a |= (!!c_flag<<7);
+	cpu.a |= (c_flag<<7);
 	cpu.f         = SET_FLAGS(0, 0, 0, new_flag);
 }
 
@@ -2865,20 +2878,27 @@ static void cpu_prefix_cb_handle (int *cycles) {
 	}
 }
 
+// TODO: TOTALLY BROKEN, FIX DAA INSTRUCTION
 static inline void cpu_opcode_daa() {
-	bool n_flag = GET_FLAG(N);
+	bool     n_flag     = GET_FLAG(N);
+	uint16_t correction = GET_FLAG(C) ? 0x60 : 0x00;
 
-	if ((cpu.a & 0xF) > 0x9 || GET_FLAG(H)) {
-		cpu.a += (n_flag ? -0x6 : 0x6);
+	if ((!n_flag && (cpu.a & 0x0F) > 0x09) || GET_FLAG(H)) {
+		correction |= 0x06;
 	}
 
-	bool set_carry_flag = 0;
-	if ((cpu.a & 0xF0) > 0x90 || GET_FLAG(C)) {
-		cpu.a += (n_flag ? -0x60 : 0x60);
-		set_carry_flag = 1;
+	if ((!n_flag && (cpu.a & 0xF0) > 0x90) || GET_FLAG(C)) {
+		correction |= 0x60;
 	}
 
-	cpu.f = SET_FLAGS(cpu.a == 0, n_flag, 0, set_carry_flag || GET_FLAG(C));
+	if (n_flag) {
+		cpu.a = cpu.a - correction;
+	}
+	else {
+		cpu.a = cpu.a + correction;
+	}
+
+	cpu.f = SET_FLAGS(cpu.a == 0, n_flag, 0, (((correction<<2) & 0x100) != 0));
 }
 
 static inline void cpu_opcode_add_a(uint8_t value) {
@@ -2928,10 +2948,10 @@ static inline void cpu_opcode_sub_a_ptr_d8() {
 }
 
 static inline void cpu_opcode_sbc_a(uint8_t value) {
-	uint8_t c_flag_now = GET_FLAG(C);
-	int     res        = cpu.a - value - c_flag_now;
-	bool    h_flag     = ((cpu.a & 0x0F) - ((value & 0x0F) - c_flag_now)) < 0;
-	cpu.a = res;
+	bool c_flag_now = GET_FLAG(C);
+	int  res        = (uint8_t) cpu.a - (uint8_t) value - (uint8_t) c_flag_now;
+	bool h_flag     = ((cpu.a & 0x0F) - (value & 0x0F) - c_flag_now) < 0;
+	cpu.a = (uint8_t) res;
 	cpu.f = SET_FLAGS(cpu.a == 0, 1, h_flag, res < 0);
 }
 
@@ -2940,7 +2960,8 @@ static inline void cpu_opcode_sbc_a_ptr_hl() {
 }
 
 static inline void cpu_opcode_sbc_a_ptr_d8() {
-	cpu_opcode_sbc_a(read_byte(cpu.pc++));
+	cpu_opcode_sbc_a(read_byte(cpu.pc));
+	cpu.pc++;
 }
 
 static inline void cpu_opcode_cp_a(uint8_t value) {
@@ -2959,18 +2980,20 @@ static inline void cpu_opcode_cp_a_ptr_d8() {
 }
 
 static inline void cpu_opcode_add_hl(uint16_t value) {
-	bool    h_flag = (cpu.hl & 0x800 + value & 0x800) > 0x1000;
-	uint8_t c_flag = ((uint32_t) cpu.hl + value) > 0xFFFF;
-	bool    z_flag = GET_FLAG(Z);
-	cpu.hl += value;
-	cpu.f          = SET_FLAGS(z_flag, 0, h_flag, c_flag);
+	uint32_t res    = cpu.hl + value;
+	bool     h_flag = ((cpu.hl & 0xfff) + (value & 0xfff) > 0xfff);
+	uint8_t  c_flag = ((res & 0x10000) != 0);
+	bool     z_flag = GET_FLAG(Z);
+	cpu.hl = (uint16_t) res;
+	cpu.f  = SET_FLAGS(z_flag, 0, h_flag, c_flag);
 }
 
 static inline void cpu_opcode_add_sp(int8_t value) {
-	bool    h_flag = (cpu.sp & 0x0F + value & 0x0F) > 0x10;
-	uint8_t c_flag = ((uint16_t) cpu.sp + value) > 0xFF;
-	cpu.sp += value;
-	cpu.f          = SET_FLAGS(0, 0, h_flag, c_flag);
+	int     res    = cpu.sp + value;
+	bool    h_flag = (((cpu.sp ^ value ^ (res & 0xFFFF)) & 0x10) == 0x10);
+	uint8_t c_flag = (((cpu.sp ^ value ^ (res & 0xFFFF)) & 0x100) == 0x100);
+	cpu.sp = (uint16_t) res;
+	cpu.f  = SET_FLAGS(0, 0, h_flag, c_flag);
 }
 
 static inline void cpu_opcode_ccf() {
@@ -2983,7 +3006,7 @@ static inline void cpu_opcode_scf() {
 
 static inline void cpu_opcode_cpl() {
 	cpu.a = ~cpu.a;
-	cpu.f = SET_FLAGS(GET_FLAG(Z), 0, 0, GET_FLAG(C));
+	cpu.f = SET_FLAGS(GET_FLAG(Z), 1, 1, GET_FLAG(C));
 }
 
 static inline void cpu_opcode_ld_hl_sp(int8_t value) {

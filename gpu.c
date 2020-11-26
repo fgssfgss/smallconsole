@@ -24,6 +24,35 @@ typedef struct {
 	int scanline_counter;
 } gpu_state;
 
+enum {
+	CTRL_BG_WIN_ENABLE      = 0x1,
+	CTRL_SPRITES_ENABLE     = 0x2,
+	CTRL_SPRITES_SIZE       = 0x4,
+	CTRL_BG_WIN_MAP_SELECT  = 0x8,
+	CTRL_BG_WIN_TILE_SELECT = 0x10,
+	CTRL_WIN_ENABLE         = 0x20,
+	CTRL_WIN_MAP_SELECT     = 0x40,
+	CTRL_RENDER_ENABLE      = 0x80
+};
+
+enum {
+	STAT_MODE_BLANK_FLAG      = 0x1,
+	STAT_MODE_MEM_ACCESS_FLAG = 0x2,
+	STAT_MODE_MASK            = 0x3,
+	STAT_COINCIDENCE_FLAG     = 0x4,
+	STAT_H_BLANK_INT_FLAG     = 0x8,
+	STAT_V_BLANK_INT_FLAG     = 0x10,
+	STAT_OAM_INT_FLAG         = 0x20,
+	STAT_COINCIDENCE_INT_FLAG = 0x40
+};
+
+enum {
+	OAM_FIRST_PALETTE = 0x10,
+	OAM_X_FLIP_FLAG   = 0x20,
+	OAM_Y_FLIP_FLAG   = 0x40,
+	OAM_PRIORITY_FLAG = 0x80
+};
+
 static gpu_state state;
 static uint8_t   vram[0x2000]; // video ram, 8 kbytes
 static uint8_t   oam[0xA0]; // oam ram
@@ -79,44 +108,43 @@ void gpu_init (void) {
 void gpu_step(int cycles) {
 	int     mode;
 	uint8_t status            = state.lcd_stat;
-	int     current_mode      = state.lcd_stat & 3;
+	int     current_mode      = state.lcd_stat & STAT_MODE_MASK;
 	bool    request_interrupt = false;
 
-	if (!(state.lcd_control & 0x80)) {
+	if (!(state.lcd_control & CTRL_RENDER_ENABLE)) {
 		screen_vsync();
 		state.scanline_counter = 456;
 		state.curline          = 0;
 		status &= 252;
-		status &= ~(1 << 0);
-		status &= ~(1 << 1);
+		status &= ~STAT_MODE_BLANK_FLAG;
+		status &= ~STAT_MODE_MEM_ACCESS_FLAG;
 		state.lcd_stat = status;
 		return;
 	}
 
 	if (state.curline >= 144) {
 		mode              = 1;
-		status |= (1 << 0);
-		status &= ~(1 << 1);
-		request_interrupt = (status & 0x10) ? true : false;
+		status |= STAT_MODE_BLANK_FLAG;
+		status &= ~STAT_MODE_MEM_ACCESS_FLAG;
+		request_interrupt = (status & STAT_V_BLANK_INT_FLAG) ? true : false;
 	} else if (state.scanline_counter >= 376) {
 		mode              = 2;
-		status &= ~(1 << 0);
-		status |= (1 << 1);
-		request_interrupt = (status & 0x20) ? true : false;
+		status &= ~STAT_MODE_BLANK_FLAG;
+		status |= STAT_MODE_MEM_ACCESS_FLAG;
+		request_interrupt = (status & STAT_OAM_INT_FLAG) ? true : false;
 	} else if (state.scanline_counter >= 204) {
 		mode = 3;
-		status |= (1 << 0);
-		status |= (1 << 1);
+		status |= STAT_MODE_BLANK_FLAG;
+		status |= STAT_MODE_MEM_ACCESS_FLAG;
 		if (mode != current_mode) {
 			gpu_render_bg(state.curline);
-
 			gpu_render_window(state.curline);
 		}
 	} else {
 		mode              = 0;
-		status &= ~(1 << 0);
-		status &= ~(1 << 1);
-		request_interrupt = (status & 0x8) ? true : false;
+		status &= ~STAT_MODE_BLANK_FLAG;
+		status &= ~STAT_MODE_MEM_ACCESS_FLAG;
+		request_interrupt = (status & STAT_H_BLANK_INT_FLAG) ? true : false;
 		if (mode != current_mode) {
 		}
 	}
@@ -126,13 +154,13 @@ void gpu_step(int cycles) {
 	}
 
 	if (state.curline == state.cmpline) {
-		status |= (1 << 2);
+		status |= STAT_COINCIDENCE_FLAG;
 
-		if (status & 0x40) {
+		if (status & STAT_COINCIDENCE_INT_FLAG) {
 			cpu_request_interrupt(1);
 		}
 	} else {
-		status &= ~(1<<2);
+		status &= ~STAT_COINCIDENCE_FLAG;
 	}
 
 	state.lcd_stat = status;
@@ -160,10 +188,14 @@ void gpu_step(int cycles) {
 }
 
 static void gpu_render_sprites (void) {
-	const uint8_t sprite_size = (state.lcd_control & 0x4) ? 2 : 1;
+	const uint8_t sprite_size = (state.lcd_control & CTRL_SPRITES_SIZE) ? 2 : 1;
 
-	for (uint8_t sprite = 0; sprite < 40; ++sprite) {
-		uint8_t sprite_offset = sprite*4;
+	if (!(state.lcd_control & CTRL_SPRITES_ENABLE)) {
+		return;
+	}
+
+	for (int sprite = 0; sprite < 40; ++sprite) {
+		int sprite_offset = sprite*4;
 
 		// position for right bottom pixel, so we must subtract 8/16 px for correct rendering
 		uint8_t sprite_y = oam[sprite_offset];              // y pos
@@ -171,10 +203,11 @@ static void gpu_render_sprites (void) {
 		uint8_t sprite_n = oam[sprite_offset + 2];          // number in tile table
 		uint8_t sprite_a = oam[sprite_offset + 3];          // attribute bit array
 
-		bool use_first_palette = (sprite_a & 0x10) ? true : false; // TODO ALL LOGIC WITH PALETTES
-		bool flip_x            = (sprite_a & 0x20) ? true : false;
-		bool flip_y            = (sprite_a & 0x40) ? true : false;
-		bool lower_prio        = (sprite_a & 0x80) ? true : false; // TODO PRIORITY LOGIC
+		bool use_first_palette = (sprite_a & OAM_FIRST_PALETTE) ? true : false;
+		bool flip_x            = (sprite_a & OAM_X_FLIP_FLAG) ? true : false;
+		bool flip_y            = (sprite_a & OAM_Y_FLIP_FLAG) ? true : false;
+		bool lower_prio        = (sprite_a & OAM_PRIORITY_FLAG) ? true : false; // TODO PRIORITY LOGIC
+
 
 		if (sprite_y == 0 || sprite_y >= SCREEN_HEIGHT + 16) {
 			continue;
@@ -184,8 +217,12 @@ static void gpu_render_sprites (void) {
 			continue;
 		}
 
-		uint8_t screen_y = sprite_y - 16;
-		uint8_t screen_x = sprite_x - 8;
+#ifdef DEBUG_BUILD
+		println("y=%02x x=%02x n=%02x attrs:%02x", sprite_y, sprite_x, sprite_n, sprite_a);
+#endif
+
+		int      screen_y    = sprite_y - 16;
+		int      screen_x    = sprite_x - 8;
 		uint16_t tile_offset = 0x0000 + sprite_n*16;
 
 		for (uint8_t y = 0; y < (8*sprite_size); ++y) {
@@ -217,11 +254,11 @@ static void gpu_render_sprites (void) {
 }
 
 static void gpu_render_window (int scanline) {
-	const uint16_t window_base = (state.lcd_control & 0x40) ? 0x1C00 : 0x1800;
-	const uint16_t tile_base   = (state.lcd_control & 0x10) ? 0x0000 : 0x0800;
+	const uint16_t window_base = (state.lcd_control & CTRL_WIN_MAP_SELECT) ? 0x1C00 : 0x1800;
+	const uint16_t tile_base   = (state.lcd_control & CTRL_BG_WIN_TILE_SELECT) ? 0x0000 : 0x0800;
 	const uint8_t  tile_size   = 16;
 
-	if (!(state.lcd_control & 0x20)) {
+	if (!(state.lcd_control & CTRL_BG_WIN_ENABLE) || !(state.lcd_control & CTRL_WIN_ENABLE)) {
 		return;
 	}
 
@@ -263,18 +300,18 @@ static void gpu_render_window (int scanline) {
 }
 
 static void gpu_render_bg (int scanline) {
-	const uint16_t bg_base   = (state.lcd_control & 0x8) ? 0x1C00 : 0x1800;
-	const uint16_t tile_base = (state.lcd_control & 0x10) ? 0x0000 : 0x0800;
+	const uint16_t bg_base   = (state.lcd_control & CTRL_BG_WIN_MAP_SELECT) ? 0x1C00 : 0x1800;
+	const uint16_t tile_base = (state.lcd_control & CTRL_BG_WIN_TILE_SELECT) ? 0x0000 : 0x0800;
 	const uint8_t  tile_size = 16;
 
-	uint16_t ypos     = state.scrolly + scanline;
-	uint8_t  tile_row = ypos/8;
+	int ypos     = state.scrolly + scanline;
+	int tile_row = ypos/8;
 
-	if (!(state.lcd_control & 0x1)) {
+	if (!(state.lcd_control & CTRL_BG_WIN_ENABLE)) {
 		return;
 	}
 
-	for (uint8_t pixel = 0; pixel < 160; ++pixel) {
+	for (int pixel = 0; pixel < 160; ++pixel) {
 		uint16_t xpos       = pixel + state.scrollx;
 		uint8_t  tile_col   = xpos/8;
 		uint16_t tile_start = 0;
@@ -381,9 +418,18 @@ void gpu_write_reg(uint16_t addr, uint8_t val) {
 		state.wndposx = val;
 		break;
 	case 0xFF46:
+#ifdef DEBUG_BUILD
+		printl("FF46: ");
+#endif
 		for (uint8_t index = 0; index <= 0x9F; ++index) {
 			oam[index] = cpu_get_dma(val, index);
+#ifdef DEBUG_BUILD
+			printl("%02x ", oam[index]);
+#endif
 		}
+#ifdef DEBUG_BUILD
+		println("end");
+#endif
 		break;
 	default:
 		break;
