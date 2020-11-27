@@ -16,6 +16,10 @@
 #define SCREEN_WIDTH  160
 #define SCREEN_HEIGHT 144
 
+#define RENDER_SCALE 2
+#define RENDER_WIDTH (SCREEN_WIDTH * RENDER_SCALE)
+#define RENDER_HEIGHT (SCREEN_HEIGHT * RENDER_SCALE)
+
 void common_init ();
 
 void common_shutdown ();
