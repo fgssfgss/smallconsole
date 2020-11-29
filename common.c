@@ -17,10 +17,13 @@ void common_init (void) {
 	SDL_Init(SDL_INIT_VIDEO);
 
 	window = SDL_CreateWindow(
-		"smallconsole", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, 0
+		"smallconsole", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, RENDER_WIDTH, RENDER_HEIGHT, 0
 	);
 
-	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+	// software renderer works much faster
+	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+	SDL_RenderSetLogicalSize(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
+	SDL_RenderSetScale(renderer, (float) RENDER_SCALE, (float) RENDER_SCALE);
 }
 
 void file_load_rom (const char *rom_filename) {
