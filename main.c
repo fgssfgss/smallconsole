@@ -3,9 +3,21 @@
 #include "gpu.h"
 #include "joypad.h"
 
+void render_frame () {
+    int cycles = 0;
+	int frame_cycles = 71025;
+	while(frame_cycles > 0) {
+		cycles = cpu_step();
+		gpu_step(cycles);
+
+		frame_cycles -= cycles;
+	}
+}
+
 int main(int argc, char *argv[]) {
-	SDL_Event e    = {0};
-	bool      quit = false;
+	SDL_Event e     = {0};
+	bool      quit  = false;
+	int32_t   ticks = 0;
 
 	common_init();
 
@@ -28,7 +40,13 @@ int main(int argc, char *argv[]) {
 			}
 		}
 
-		cpu_tick();
+		ticks = SDL_GetTicks();
+		render_frame();
+		int32_t time_to_delay = 1000/60.0f - (SDL_GetTicks() - ticks);
+
+		if (time_to_delay > 0) {
+			SDL_Delay(time_to_delay);
+		}
 	}
 
 	common_shutdown();

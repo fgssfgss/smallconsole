@@ -3,7 +3,7 @@
 
 void cpu_init ();
 
-void cpu_tick ();
+int cpu_step ();
 
 void cpu_request_interrupt (int bit);
 
