@@ -1,8 +1,26 @@
-#include "common.h"
-#include "cpu.h"
-#include "gpu.h"
-#include "joypad.h"
-#include "rom.h"
+#include
+
+"common.h"
+
+#include
+
+"cpu.h"
+
+#include
+
+"gpu.h"
+
+#include
+
+"joypad.h"
+
+#include
+
+"rom.h"
+
+#include
+
+"sound.h"
 
 enum flags {
 	C = 4,
@@ -2280,13 +2298,22 @@ static uint8_t cpu_read_register (uint16_t addr) {
 	case 0xFF02:
 		return 0xff;
 
+	case 0xFF10 ... 0xFF26:
+		return sound_read_reg(addr);
+
+	case 0xFF27 ... 0xFF2F:
+		return 0x00;
+
+	case 0xFF30 ... 0xFF3F:
+		return sound_read_wavetable(addr);
+
 	default:
 		return 0x00;
 	}
 }
 
-static void cpu_write_register(uint16_t addr, uint8_t val) {
-	switch(addr) {
+static void cpu_write_register (uint16_t addr, uint8_t val) {
+	switch (addr) {
 	case 0xFF0F:
 		cpu.interrupt_flag = val | 0xE0;
 		break;
@@ -2325,17 +2352,29 @@ static void cpu_write_register(uint16_t addr, uint8_t val) {
 		serial_write_control(val);
 		break;
 
+	case 0xFF10 ... 0xFF26:
+		sound_write_reg(addr, val);
+		break;
+
+	case 0xFF27 ... 0xFF2F:
+		// not used
+		break;
+
+	case 0xFF30 ... 0xFF3F:
+		sound_write_wavetable(addr, val);
+		break;
+
 	default:
 		break;
 	}
 }
 
-static enum registers map_register(uint8_t opcode) {
+static enum registers map_register (uint8_t opcode) {
 	enum registers reg_code = (opcode & 0xF)%8;
 	return reg_code;
 }
 
-static void cpu_opcode_bit(enum registers reg, uint8_t bit) {
+static void cpu_opcode_bit (enum registers reg, uint8_t bit) {
 	switch (reg) {
 	case REG_B:
 		SET_BIT_FLAGS(bit, cpu.b);

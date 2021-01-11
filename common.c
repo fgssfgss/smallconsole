@@ -1,20 +1,22 @@
 #include "common.h"
 #include <stdarg.h>
+#include <math.h>
 #include "joypad.h"
 #include "rom.h"
 
-typedef void (*key_handler) (int key);
+static void audio_callback_handler (void *, Uint8 *, int);
 
-static FILE         *log             = NULL;
-static SDL_Window   *window          = NULL;
-static SDL_Renderer *renderer        = NULL;
-static key_handler  key_up_handler   = NULL;
-static key_handler  key_down_handler = NULL;
+static FILE           *log_file        = NULL;
+static SDL_Window     *window          = NULL;
+static SDL_Renderer   *renderer        = NULL;
+static key_handler    key_up_handler   = NULL;
+static key_handler    key_down_handler = NULL;
+static audio_callback audio_handler    = NULL;
 
 void common_init (void) {
-	log = stdout;
+	log_file = stdout;
 
-	SDL_Init(SDL_INIT_VIDEO);
+	SDL_Init(SDL_INIT_EVERYTHING);
 
 	window = SDL_CreateWindow(
 		"smallconsole", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, RENDER_WIDTH, RENDER_HEIGHT, 0
@@ -24,6 +26,20 @@ void common_init (void) {
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
 	SDL_RenderSetLogicalSize(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
 	SDL_RenderSetScale(renderer, (float) RENDER_SCALE, (float) RENDER_SCALE);
+
+	// sound init
+	SDL_AudioSpec desiredSpec;
+
+	desiredSpec.freq     = SOUND_FREQUENCY;
+	desiredSpec.format   = AUDIO_S16SYS;
+	desiredSpec.channels = 1;
+	desiredSpec.samples  = 1024;
+	desiredSpec.callback = audio_callback_handler;
+	desiredSpec.userdata = NULL;
+
+	SDL_OpenAudio(&desiredSpec, NULL);
+
+	SDL_PauseAudio(0);
 }
 
 void file_load_rom (const char *rom_filename) {
@@ -71,7 +87,11 @@ void screen_clear (void) {
 	SDL_RenderClear(renderer);
 }
 
-void keyboard_set_handlers (void (*key_down) (int key), void (*key_up) (int key)) {
+void sound_set_handler (audio_callback handler) {
+	audio_handler = handler;
+}
+
+void keyboard_set_handlers (key_handler key_down, key_handler key_up) {
 	key_up_handler   = key_up;
 	key_down_handler = key_down;
 }
@@ -116,6 +136,8 @@ void keyboard_handle_input (SDL_Event *event) {
 }
 
 void common_shutdown (void) {
+	SDL_PauseAudio(1);
+	SDL_CloseAudio();
 	SDL_DestroyWindow(window);
 	SDL_Quit();
 }
@@ -125,19 +147,26 @@ void println (const char *message, ...) {
 	va_list arg;
 
 	va_start(arg, message);
-	vfprintf(log, message, arg);
+	vfprintf(log_file, message, arg);
 	va_end(arg);
 
-	fprintf(log, "\r\n");
-	fflush(log);
+	fprintf(log_file, "\r\n");
+	fflush(log_file);
 }
 
-void printl(const char *message, ...) {
+void printl (const char *message, ...) {
 	va_list arg;
 
 	va_start(arg, message);
-	vfprintf(log, message, arg);
+	vfprintf(log_file, message, arg);
 	va_end(arg);
 
-	fflush(log);
+	fflush(log_file);
+}
+
+static void audio_callback_handler (void *opaque, Uint8 *stream, int length) {
+	Sint16 *audio_stream = (Sint16 *) stream;
+	int    audio_length  = length/2;
+
+	audio_handler(opaque, audio_stream, audio_length);
 }

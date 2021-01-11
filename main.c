@@ -2,6 +2,7 @@
 #include "cpu.h"
 #include "gpu.h"
 #include "joypad.h"
+#include "sound.h"
 
 int main(int argc, char *argv[]) {
 	SDL_Event e    = {0};
@@ -14,6 +15,8 @@ int main(int argc, char *argv[]) {
 	file_load_rom("tetris.gb");
 
 	keyboard_set_handlers(joypad_key_down, joypad_key_up);
+	sound_set_handler(sound_handler);
+
 	gpu_init();
 	cpu_init();
 

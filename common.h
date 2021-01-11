@@ -20,6 +20,12 @@
 #define RENDER_WIDTH (SCREEN_WIDTH * RENDER_SCALE)
 #define RENDER_HEIGHT (SCREEN_HEIGHT * RENDER_SCALE)
 
+#define SOUND_FREQUENCY 44100
+
+typedef void (*key_handler) (int key);
+
+typedef void (*audio_callback) (void *, Sint16 *, int);
+
 void common_init ();
 
 void common_shutdown ();
@@ -36,7 +42,9 @@ void screen_vsync (void);
 
 void screen_put_pixel (int x, int y, uint8_t r, uint8_t g, uint8_t b);
 
-void keyboard_set_handlers (void (*key_down) (int key), void (*key_up) (int key));
+void sound_set_handler (audio_callback handler);
+
+void keyboard_set_handlers (key_handler key_down, key_handler key_up);
 
 void keyboard_handle_input (SDL_Event *event);
 
