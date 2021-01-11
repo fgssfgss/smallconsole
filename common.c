@@ -56,7 +56,11 @@ void file_load_rom (const char *rom_filename) {
 
 	uint8_t *romdata = (void *) malloc(romsize*sizeof(uint8_t));
 
-	fread(romdata, 0x1, romsize, rom);
+	size_t read_res = fread(romdata, 0x1, romsize, rom);
+	if (read_res != romsize) {
+		println("Wtf? Can't read full file");
+		return;
+	}
 	fclose(rom);
 
 	if (romdata[0x0147] != 0x00 && romdata[0x0147] != 0x01) {
