@@ -5,14 +5,14 @@
 
 typedef void (*key_handler) (int key);
 
-static FILE         *log             = NULL;
+static FILE         *log_file        = NULL;
 static SDL_Window   *window          = NULL;
 static SDL_Renderer *renderer        = NULL;
 static key_handler  key_up_handler   = NULL;
 static key_handler  key_down_handler = NULL;
 
 void common_init (void) {
-	log = stdout;
+	log_file = stdout;
 
 	SDL_Init(SDL_INIT_VIDEO);
 
@@ -40,7 +40,11 @@ void file_load_rom (const char *rom_filename) {
 
 	uint8_t *romdata = (void *) malloc(romsize*sizeof(uint8_t));
 
-	fread(romdata, 0x1, romsize, rom);
+	size_t read_res = fread(romdata, 0x1, romsize, rom);
+	if (read_res != romsize) {
+		println("Wtf? Can't read full file");
+		return;
+	}
 	fclose(rom);
 
 	if (romdata[0x0147] != 0x00 && romdata[0x0147] != 0x01) {
@@ -125,19 +129,19 @@ void println (const char *message, ...) {
 	va_list arg;
 
 	va_start(arg, message);
-	vfprintf(log, message, arg);
+	vfprintf(log_file, message, arg);
 	va_end(arg);
 
-	fprintf(log, "\r\n");
-	fflush(log);
+	fprintf(log_file, "\r\n");
+	fflush(log_file);
 }
 
 void printl(const char *message, ...) {
 	va_list arg;
 
 	va_start(arg, message);
-	vfprintf(log, message, arg);
+	vfprintf(log_file, message, arg);
 	va_end(arg);
 
-	fflush(log);
+	fflush(log_file);
 }

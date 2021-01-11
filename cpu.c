@@ -41,7 +41,7 @@ enum registers {
 
 static void cpu_dump_state ();
 
-static int cpu_step (void);
+static int cpu_step_real (void);
 
 static void handle_interrupts (void);
 
@@ -624,16 +624,7 @@ void cpu_init () {
 	cpu.interrupt_flag   = 0xE0;
 }
 
-void cpu_tick () {
-	int cycles = 0;
 
-	if (!cpu.stop) {
-		handle_interrupts();
-
-		cycles = cpu_step();
-		gpu_step(cycles);
-	}
-}
 
 static uint8_t serial_data = 0x0;
 
@@ -687,7 +678,19 @@ uint8_t cpu_get_dma (uint8_t start_addr, uint8_t index) {
 	return read_byte(addr);
 }
 
-static int cpu_step (void) {
+int cpu_step (void) {
+	int cycles = 0;
+
+	if (!cpu.stop) {
+		handle_interrupts();
+
+		cycles = cpu_step_real();
+	}
+
+	return cycles;
+}
+
+static int cpu_step_real (void) {
 	uint8_t instr  = read_byte(cpu.pc++);
 	int     cycles = cycles_main_opcodes[instr];
 	instructions[instr](&cycles);
