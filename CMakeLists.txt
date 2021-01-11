@@ -8,4 +8,4 @@ find_package(SDL2 REQUIRED)
 include_directories(${SDL2_INCLUDE_DIR})
 
 add_executable(smallconsole main.c common.c cpu.c gpu.c joypad.c rom.c sound.c)
-target_link_libraries(smallconsole "${SDL2_LIBRARY}")
+target_link_libraries(smallconsole "${SDL2_LIBRARY} -lm")

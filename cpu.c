@@ -1,26 +1,9 @@
-#include
-
-"common.h"
-
-#include
-
-"cpu.h"
-
-#include
-
-"gpu.h"
-
-#include
-
-"joypad.h"
-
-#include
-
-"rom.h"
-
-#include
-
-"sound.h"
+#include "common.h"
+#include "cpu.h"
+#include "gpu.h"
+#include "joypad.h"
+#include "rom.h"
+#include "sound.h"
 
 enum flags {
 	C = 4,
