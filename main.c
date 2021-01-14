@@ -6,10 +6,11 @@
 
 void render_frame () {
     int cycles = 0;
-	int frame_cycles = 71025;
+	int frame_cycles = CPU_FREQ / 60.0;
 	while(frame_cycles > 0) {
 		cycles = cpu_step();
 		gpu_step(cycles);
+		sound_step(cycles);
 
 		frame_cycles -= cycles;
 	}
@@ -27,7 +28,6 @@ int main(int argc, char *argv[]) {
 	file_load_rom("tetris.gb");
 
 	keyboard_set_handlers(joypad_key_down, joypad_key_up);
-	sound_set_handler(sound_handler);
 
 	gpu_init();
 	cpu_init();
