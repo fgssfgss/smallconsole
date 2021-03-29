@@ -92,10 +92,10 @@ void screen_clear (void) {
 void audio_send_samples (int16_t *samples, int len) {
 	int32_t queued = SDL_GetQueuedAudioSize(audio_dev);
 
-	if (queued > (SOUND_SAMPLE_RATE / 60) * 5) {
-		SDL_ClearQueuedAudio(audio_dev);
-	} else {
+	if (queued <= (SOUND_SAMPLE_RATE / 60.0) * 5) {
 		SDL_QueueAudio(audio_dev, (uint8_t *)samples, len * 2);
+	} else {
+		SDL_ClearQueuedAudio(audio_dev);
 	}
 }
 

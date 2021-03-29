@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
 	gpu_init();
 	cpu_init();
 
-	while (!quit) {
+	while (!quit || SDL_GetAudioStatus() == SDL_AUDIO_PLAYING) {
 		while (SDL_PollEvent(&e) != 0) {
 			if (e.type == SDL_QUIT) {
 				quit = true;
