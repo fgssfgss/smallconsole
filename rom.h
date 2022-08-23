@@ -3,7 +3,7 @@
 
 #include "common.h"
 
-void rom_load (uint8_t *rom);
+void rom_load (uint8_t *rom, uint64_t filesize, int type);
 
 uint8_t rom_read (uint16_t addr);
 

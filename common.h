@@ -9,7 +9,7 @@
 #include <SDL2/SDL.h>
 
 /* switch to enable GPU debug window and debug output*/
-#undef DEBUG_BUILD
+#define DEBUG_BUILD
 
 #define ALWAYS_INLINE __attribute__((always_inline))
 
@@ -19,6 +19,12 @@
 #define RENDER_SCALE 2
 #define RENDER_WIDTH (SCREEN_WIDTH * RENDER_SCALE)
 #define RENDER_HEIGHT (SCREEN_HEIGHT * RENDER_SCALE)
+
+typedef struct rom_mapper_func {
+	void (*init)(uint8_t *rom, uint64_t filesize);
+	uint8_t (*read)(uint16_t address);
+	void (*write)(uint16_t address, uint8_t val);
+} rom_mapper_func_t;
 
 void common_init ();
 
