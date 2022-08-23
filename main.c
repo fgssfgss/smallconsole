@@ -23,7 +23,7 @@ int main(int argc, char *argv[]) {
 
 	println("EMULATOR INIT");
 
-	file_load_rom("tetris.gb");
+	file_load_rom("zelda.gb");
 
 	keyboard_set_handlers(joypad_key_down, joypad_key_up);
 	gpu_init();

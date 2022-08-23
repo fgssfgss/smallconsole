@@ -1,31 +1,33 @@
 #include "rom.h"
+#include "norom.h"
+#include "mbc1.h"
 
-static uint8_t *rom0; // should be size of 0x4000
-static uint8_t bank;
+static rom_mapper_func_t cb;
 
-// TODO: THIS CODE PRELIMINARY SUPPORTS MBC1 AND NOMBC ROMS, FIXME PLZ
+void rom_load (uint8_t *rom, uint64_t filesize, int type) {
+	switch(type) {
+		case 0x0:
+			cb = norom_get_func();
+			break;
+		case 0x1:
+		case 0x2:
+		case 0x3:
+			cb = mbc1_get_func();
+			break;
+		default:
+			break;
+	}
 
-void rom_load (uint8_t *rom) {
-	rom0 = rom;
-	bank = 0x1;
+	cb.init(rom, filesize);
+
+	printf("ROM %02x inited!\n", type);
 }
 
 uint8_t rom_read (uint16_t addr) {
-	switch (addr) {
-	case 0x0000 ... 0x3fff:
-		return rom0[addr];
-	case 0x4000 ... 0x7fff:
-		return rom0[(addr - 0x4000) + (0x4000*bank)];
-	default:
-		return rom0[addr];
-	}
+	return cb.read(addr);
 }
 
 void rom_write (uint16_t addr, uint8_t val) {
-	if (addr == 0x2000) {
-		bank = val;
-	}
-	else {
-		println("WTF??");
-	}
+	cb.write(addr, val);
 }
+

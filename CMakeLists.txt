@@ -7,5 +7,5 @@ set(CMAKE_C_FLAGS "-O2 -pipe")
 find_package(SDL2 REQUIRED)
 include_directories(${SDL2_INCLUDE_DIR})
 
-add_executable(smallconsole main.c common.c cpu.c gpu.c joypad.c rom.c)
+add_executable(smallconsole main.c common.c cpu.c gpu.c joypad.c rom.c norom.c mbc1.c)
 target_link_libraries(smallconsole "${SDL2_LIBRARY}")
