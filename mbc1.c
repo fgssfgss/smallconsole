@@ -65,7 +65,6 @@ static void mbc1_write(uint16_t addr, uint8_t val) {
 	}
 	break;
 	case 0x6000 ... 0x7fff: {
-		printl("ROM/RAM MODE CHANGE");
 		mode = val & 0x1;
 	}
 	break;

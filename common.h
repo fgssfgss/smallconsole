@@ -9,7 +9,7 @@
 #include <SDL2/SDL.h>
 
 /* switch to enable GPU debug window and debug output*/
-#define DEBUG_BUILD
+#undef DEBUG_BUILD
 
 #define ALWAYS_INLINE __attribute__((always_inline))
 
