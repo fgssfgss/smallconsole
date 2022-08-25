@@ -61,8 +61,8 @@ void file_load_rom (const char *rom_filename) {
 	}
 	fclose(rom);
 
-	if (romdata[0x0147] != 0x00 && romdata[0x0147] != 0x01) {
-		println("Mapper is not supported");
+	if (romdata[0x0147] != 0x00 && romdata[0x0147] != 0x01 && romdata[0x0147] != 0x02 && romdata[0x0147] != 0x03) {
+		println("Mapper is not supported, mapper version is %02x", romdata[0x0147]);
 		return;
 	}
 	else {
@@ -72,7 +72,7 @@ void file_load_rom (const char *rom_filename) {
 		println("RAM size is %02x", romdata[0x0149]);
 	}
 
-	rom_load(romdata);
+	rom_load(romdata, romsize, romdata[0x0147]);
 }
 
 void screen_put_pixel (int x, int y, uint8_t r, uint8_t g, uint8_t b) {

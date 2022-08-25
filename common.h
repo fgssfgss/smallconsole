@@ -26,6 +26,12 @@
 
 typedef void (*key_handler) (int key);
 
+typedef struct rom_mapper_func {
+	void (*init)(uint8_t *rom, uint64_t filesize);
+	uint8_t (*read)(uint16_t address);
+	void (*write)(uint16_t address, uint8_t val);
+} rom_mapper_func_t;
+
 void common_init ();
 
 void common_shutdown ();
