@@ -3,9 +3,9 @@ project(smallconsole C)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${smallconsole_SOURCE_DIR}/cmake")
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_FLAGS "-O2 -pipe")
+set(CMAKE_C_FLAGS "-O0 -pipe -g")
 find_package(SDL2 REQUIRED)
 include_directories(${SDL2_INCLUDE_DIR})
 
-add_executable(smallconsole main.c common.c cpu.c gpu.c joypad.c rom.c norom.c mbc1.c)
+add_executable(smallconsole main.c common.c cpu.c gpu.c joypad.c rom.c norom.c mbc1.c timer.c)
 target_link_libraries(smallconsole "${SDL2_LIBRARY}")

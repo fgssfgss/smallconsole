@@ -3,6 +3,7 @@
 #include "gpu.h"
 #include "joypad.h"
 #include "rom.h"
+#include "timer.h"
 
 enum flags {
 	C = 4,
@@ -574,7 +575,6 @@ static instruction_handler instructions[256] = {
 static cpu_state cpu;
 
 // ALL KINDS OF MEMORY
-static uint8_t sram[0x4000]; // switchable ram from cartridge
 static uint8_t iram[0x4000]; // internal ram, 8kbytes
 static uint8_t zeropage[0x7F]; // high mem
 // 0x0000 -> 0x3FFF - ROM bank #0
@@ -682,9 +682,9 @@ int cpu_step (void) {
 	int cycles = 0;
 
 	if (!cpu.stop) {
-		handle_interrupts();
-
 		cycles = cpu_step_real();
+
+		handle_interrupts();
 	}
 
 	return cycles;
@@ -2140,7 +2140,7 @@ static inline ALWAYS_INLINE uint8_t read_byte(uint16_t addr) {
 		val = gpu_read(addr%0x8000);
 	}
 	else if (addr >= 0xA000 && addr <= 0xBFFF) {
-		val = sram[addr%0xA000];
+		val = rom_read(addr);
 	}
 	else if (addr >= 0xC000 && addr <= 0xDFFF) {
 		val = iram[addr%0xC000];
@@ -2174,7 +2174,7 @@ static inline ALWAYS_INLINE void write_byte(uint16_t addr, uint8_t val) {
 		gpu_write(addr%0x8000, val);
 	}
 	else if (addr >= 0xA000 && addr <= 0xBFFF) {
-		sram[addr%0xA000] = val;
+		rom_write(addr, val);
 	}
 	else if (addr >= 0xC000 && addr <= 0xF0FF) {
 		iram[addr%0xC000] = val;
@@ -2246,6 +2246,7 @@ static void cpu_print_mem (uint16_t begin, uint16_t end) {
 
 static void cpu_dump_state () {
 	println("Current INSTRUCTION POS: 0x%04x", cpu.pc - 1);
+	println("Current INSTRUCTION is 0x%02x", read_byte(cpu.pc - 1));
 	println("CPU:\n Flags:\tZ:%d N:%d H:%d C:%d", GET_FLAG(Z), GET_FLAG(N), GET_FLAG(H), GET_FLAG(C));
 	println("\tPC:0x%04x SP:0x%04x", cpu.pc, cpu.sp);
 	println("REGISTERS:\n A:0x%02x B:0x%02x C:0x%02x D:0x%02x E:0x%02x H:0x%02x L:0x%02x F:0x%02x", cpu.a
@@ -2282,6 +2283,15 @@ static uint8_t cpu_read_register (uint16_t addr) {
 
 	case 0xFF02:
 		return 0xff;
+
+	case 0xFF03:
+		return 0xff;
+
+	case 0xFF04:
+	case 0xFF05:
+	case 0xFF06:
+	case 0xFF07:
+		return timer_read_reg(addr);
 
 	default:
 		return 0x00;
@@ -2326,6 +2336,13 @@ static void cpu_write_register(uint16_t addr, uint8_t val) {
 
 	case 0xFF02:
 		serial_write_control(val);
+		break;
+
+	case 0xFF04:
+	case 0xFF05:
+	case 0xFF06:
+	case 0xFF07:
+		timer_write_reg(addr, val);
 		break;
 
 	default:
@@ -2881,27 +2898,31 @@ static void cpu_prefix_cb_handle (int *cycles) {
 	}
 }
 
-// TODO: TOTALLY BROKEN, FIX DAA INSTRUCTION
 static inline void cpu_opcode_daa() {
 	bool     n_flag     = GET_FLAG(N);
 	uint16_t correction = GET_FLAG(C) ? 0x60 : 0x00;
 
-	if ((!n_flag && (cpu.a & 0x0F) > 0x09) || GET_FLAG(H)) {
+	if (GET_FLAG(H)) {
 		correction |= 0x06;
 	}
 
-	if ((!n_flag && (cpu.a & 0xF0) > 0x90) || GET_FLAG(C)) {
-		correction |= 0x60;
-	}
+	if (!n_flag) {
+		if ((cpu.a & 0x0F) > 0x09) {
+			correction |= 0x06;
+		}
+		if (cpu.a > 0x99) {
+			correction |= 0x60;
+		}
 
-	if (n_flag) {
-		cpu.a = cpu.a - correction;
-	}
-	else {
 		cpu.a = cpu.a + correction;
 	}
+	else {
+		cpu.a = cpu.a - correction;
+	}
 
-	cpu.f = SET_FLAGS(cpu.a == 0, n_flag, 0, (((correction<<2) & 0x100) != 0));
+	cpu.f = SET_FLAGS(cpu.a == 0, n_flag, 0, (correction >= 0x60));
+
+	printf("WE ARE CALLING DAA FUNCTION\n");
 }
 
 static inline void cpu_opcode_add_a(uint8_t value) {

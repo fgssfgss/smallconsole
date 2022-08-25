@@ -117,8 +117,10 @@ static void gpu_debug_clear(void) {
 
 void gpu_init (void) {
 #ifdef DEBUG_BUILD
-	SDL_CreateWindowAndRenderer(16 * 8, 24 * 8, SDL_WINDOW_UTILITY, &wind, &rend);
+	SDL_CreateWindowAndRenderer(16 * 8 * 3, 24 * 8 * 3, SDL_WINDOW_UTILITY, &wind, &rend);
 	SDL_SetWindowTitle(wind, "DEBUG TILE WINDOW");
+	SDL_RenderSetLogicalSize(rend, 16 * 8, 24 * 8);
+	SDL_RenderSetScale(rend, (float)3.0, (float)3.0);
 	gpu_debug_clear();
 #endif /* debug end */
 
@@ -210,9 +212,9 @@ void gpu_step(int cycles) {
 
 				if (status & STAT_V_BLANK_INT_FLAG) {
 					cpu_request_interrupt(1);
+				} else {
+					cpu_request_interrupt(0);
 				}
-
-				cpu_request_interrupt(0);
 
 #ifdef DEBUG_BUILD
 				gpu_debug();

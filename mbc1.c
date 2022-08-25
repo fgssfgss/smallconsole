@@ -21,7 +21,7 @@ rom_mapper_func_t mbc1_get_func(void) {
 
 static void mbc1_init(uint8_t *rom, uint64_t filesize) {
 	rom_bank = 1;
-	ram_bank = 1;
+	ram_bank = 0;
 	mode = 0;
 	ram_enabled = false;
 	memory = rom;
@@ -66,6 +66,10 @@ static void mbc1_write(uint16_t addr, uint8_t val) {
 	break;
 	case 0x6000 ... 0x7fff: {
 		mode = val & 0x1;
+	}
+	break;
+	case 0xa000 ... 0xbfff: {
+		ram[(addr - 0xa000) + (0x4000 * ram_bank)] = val;
 	}
 	break;
 	}
