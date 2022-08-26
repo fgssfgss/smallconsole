@@ -69,7 +69,8 @@ static int mode;
 static gpu_state state;
 static uint8_t   vram[0x2000]; // video ram, 8 kbytes
 static uint8_t   oam[0xA0]; // oam ram
-static uint8_t   canvas[SCREEN_WIDTH * SCREEN_HEIGHT];
+// TOOD: debug issue with buffer overflow, this ugly hack fixes it
+static uint8_t   canvas[(SCREEN_WIDTH + 1) * (SCREEN_HEIGHT + 1)];
 
 static void gpu_canvas_put_pixel (int x, int y, uint8_t color);
 
@@ -94,6 +95,11 @@ static uint8_t inline color_to_default_palette (int color);
 static void inline parse_colors_from_bit_palette (uint8_t palette, uint8_t *palette_save);
 
 #ifdef DEBUG_BUILD
+
+#define DEBUG_WINDOW_WIDTH (16 * 8)
+#define DEBUG_WINDOW_HEIGHT (24 * 8)
+#define DEBUG_WINDOW_RATIO (3)
+
 static const bool debug = false;
 static SDL_Window *wind = NULL;
 static SDL_Renderer *rend = NULL;
@@ -101,6 +107,10 @@ static SDL_Renderer *rend = NULL;
 static void gpu_debug(void);
 
 static void gpu_debug_put_pixel(int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+	if (x < 0 || x > DEBUG_WINDOW_WIDTH || y < 0 || y > DEBUG_WINDOW_HEIGHT) {
+		return;
+	}
+
 	SDL_SetRenderDrawColor(rend, r, g, b, 255);
 	SDL_RenderDrawPoint(rend, x, y);
 }
@@ -117,10 +127,10 @@ static void gpu_debug_clear(void) {
 
 void gpu_init (void) {
 #ifdef DEBUG_BUILD
-	SDL_CreateWindowAndRenderer(16 * 8 * 3, 24 * 8 * 3, SDL_WINDOW_UTILITY, &wind, &rend);
+	SDL_CreateWindowAndRenderer(DEBUG_WINDOW_WIDTH * DEBUG_WINDOW_RATIO, DEBUG_WINDOW_HEIGHT * DEBUG_WINDOW_RATIO, SDL_WINDOW_UTILITY, &wind, &rend);
 	SDL_SetWindowTitle(wind, "DEBUG TILE WINDOW");
-	SDL_RenderSetLogicalSize(rend, 16 * 8, 24 * 8);
-	SDL_RenderSetScale(rend, (float)3.0, (float)3.0);
+	SDL_RenderSetLogicalSize(rend, DEBUG_WINDOW_WIDTH, DEBUG_WINDOW_HEIGHT);
+	SDL_RenderSetScale(rend, (float)DEBUG_WINDOW_RATIO, (float)DEBUG_WINDOW_RATIO);
 	gpu_debug_clear();
 #endif /* debug end */
 
@@ -241,6 +251,10 @@ void gpu_step(int cycles) {
 }
 
 static void gpu_canvas_put_pixel (int x, int y, uint8_t color) {
+	if (x < 0 || x > SCREEN_WIDTH || y < 0 || y > SCREEN_HEIGHT) {
+		return;
+	}
+
 	canvas[y * SCREEN_WIDTH + x] = color;
 }
 
@@ -321,10 +335,6 @@ static void gpu_render_sprite (int sprite) {
 	if (state.lcd_control & CTRL_SPRITES_SIZE) {
 		sprite_n &= ~1;
 	}
-
-#ifdef DEBUG_BUILD
-	println("y=%02x x=%02x n=%02x attrs:%02x", sprite_y, sprite_x, sprite_n, sprite_a);
-#endif
 
 	int      screen_y    = sprite_y - 16;
 	int      screen_x    = sprite_x - 8;

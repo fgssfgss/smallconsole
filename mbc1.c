@@ -36,14 +36,17 @@ static uint8_t mbc1_read(uint16_t addr) {
 	case 0x4000 ... 0x7fff:
 		return memory[(addr - 0x4000) + (0x4000*rom_bank)];
 	case 0xa000 ... 0xbfff:
-		return ram[(addr - 0xa000) + (0x4000*ram_bank)];
+		if (!ram_enabled) {
+			return 0xff;
+		}
+		return ram[(addr - 0xa000) + (0x2000*ram_bank)];
 	}
 }
 
 static void mbc1_write(uint16_t addr, uint8_t val) {
 	switch (addr) {
 	case 0x0000 ... 0x1fff: {
-		ram_enabled = (val & 0x0a) ? true : false;	
+		ram_enabled = (val == 0x0a) ? true : false;
 	}
 	break;
 	case 0x2000 ... 0x3fff: {
@@ -69,7 +72,10 @@ static void mbc1_write(uint16_t addr, uint8_t val) {
 	}
 	break;
 	case 0xa000 ... 0xbfff: {
-		ram[(addr - 0xa000) + (0x4000 * ram_bank)] = val;
+		if (!ram_enabled) {
+			return;
+		}
+		ram[(addr - 0xa000) + (0x2000 * ram_bank)] = val;
 	}
 	break;
 	}
