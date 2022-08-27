@@ -2921,8 +2921,6 @@ static inline void cpu_opcode_daa() {
 	}
 
 	cpu.f = SET_FLAGS(cpu.a == 0, n_flag, 0, (correction >= 0x60));
-
-	printf("WE ARE CALLING DAA FUNCTION\n");
 }
 
 static inline void cpu_opcode_add_a(uint8_t value) {
