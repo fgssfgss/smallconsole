@@ -6,7 +6,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifndef __EMSCRIPTEN__
 #include <SDL2/SDL.h>
+#else
+#include <emscripten.h>
+#include <emscripten/html5.h>
+#include <SDL.h>
+#include <string.h>
+#endif
 
 /* switch to enable GPU debug window and debug output*/
 #undef DEBUG_BUILD

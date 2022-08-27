@@ -50,7 +50,6 @@ void timer_step (int cycles) {
 }
 
 void timer_write_reg (uint16_t addr, uint8_t val) {
-    printf("WRITING TO TIMER 0x%04x val %d\n", addr, val);
     switch (addr) {
     case 0xff04:
         timer_divider = 0;
@@ -68,7 +67,6 @@ void timer_write_reg (uint16_t addr, uint8_t val) {
 }
 
 uint8_t timer_read_reg (uint16_t addr) {
-    printf("READING FROM TIMER REG 0x%04x\n", addr);
     switch (addr) {
     case 0xff04:
         return timer_divider;
@@ -78,5 +76,7 @@ uint8_t timer_read_reg (uint16_t addr) {
         return timer_modulo;
     case 0xff07:
         return timer_ctrl;
+    default:
+        return 0xff;
     }
 }
