@@ -40,6 +40,8 @@ static uint8_t mbc1_read(uint16_t addr) {
 			return 0xff;
 		}
 		return ram[(addr - 0xa000) + (0x2000*ram_bank)];
+	default:
+		return 0xff;
 	}
 }
 
