@@ -2,6 +2,7 @@
 #include "cpu.h"
 #include "gpu.h"
 #include "joypad.h"
+#include "timer.h"
 
 void render_frame () {
     int cycles = 0;
@@ -9,6 +10,7 @@ void render_frame () {
 	while(frame_cycles > 0) {
 		cycles = cpu_step();
 		gpu_step(cycles);
+		timer_step(cycles);
 
 		frame_cycles -= cycles;
 	}
@@ -23,7 +25,7 @@ int main(int argc, char *argv[]) {
 
 	println("EMULATOR INIT");
 
-	file_load_rom("acid.gb");
+	file_load_rom("zelda.gb");
 
 	keyboard_set_handlers(joypad_key_down, joypad_key_up);
 	gpu_init();
