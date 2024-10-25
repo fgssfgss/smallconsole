@@ -1,6 +1,7 @@
 #include "norom.h"
 
 static uint8_t *rom0;
+static uint8_t sram[0x4000];
 static int bank;
 
 static void norom_init(uint8_t *rom, uint64_t filesize);
@@ -27,23 +28,19 @@ static uint8_t norom_read (uint16_t addr) {
 		return rom0[addr];
 	case 0x4000 ... 0x7fff:
 		return rom0[(addr - 0x4000) + (0x4000*bank)];
+	case 0xa000 ... 0xbfff:
+		return sram[addr - 0xa000];
 	default:
 		return rom0[addr];
 	}
 }
 
 static void norom_write (uint16_t addr, uint8_t val) {
-	if (addr < 0x2000) {
-		printf("RAM ENABLE WRITE");
-	} else if (addr < 0x4000) {
-		printf("ROM BANK SELECT");
-		bank = (val & 0x1f) ? : 1;
-	} else if (addr < 0x6000) {
-		printf("ROM BANK UPPER SELECT");
-	} else if (addr < 0x8000) {
-		printf("ROM RAM SELECT MODE");
-	} else {
-		println("WTF??");
+	switch (addr) {
+	case 0xa000 ... 0xbfff:
+		sram[addr - 0xa000] = val;
+	default:
+		printf("WTF???\n");
 	}
 }
 
