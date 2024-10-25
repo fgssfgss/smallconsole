@@ -1,5 +1,7 @@
 #include "sound.h"
 
+#include <math.h>
+
 enum {
 	SQ1_SWEEP_NEGATE_SHIFT = 0,
 	SQ1_DUTY_LENGTH_LOAD,
@@ -43,13 +45,6 @@ typedef struct {
 static uint8_t regs[0x1F] = {0x80, 0xBF, 0xF3, 0xFF, 0xBF, 0xFF, 0x3F, 0x00, 0xFF, 0xBF, 0x7F, 0xFF, 0x9F, 0xFF, 0xBF, 0xFF, 0xFF, 0x00, 0x00, 0xBF, 0x77, 0xF3, 0xF1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static uint8_t waveram[0x10] = {0x84, 0x40, 0x43, 0xAA, 0x2D, 0x78, 0x92, 0x3C, 0x60, 0x59, 0x59, 0xB0, 0x34, 0xB8, 0x2E, 0xDA};
 static sound_state state;
-static uint16_t buffer[SOUND_SAMPLE_RATE];
-
-static int sq_wavetables[4][8] = {{0, 0, 0, 0, 0, 0, 0, 1}, // 12.5% Duty cycle square
-            			      {1, 0, 0, 0, 0, 0, 0, 1}, // 25%
-                              {1, 0, 0, 0, 0, 1, 1, 1}, // 50%
-                              {0, 1, 1, 1, 1, 1, 1, 0}  // 75%
-};
 
 void sound_write_reg (uint16_t addr, uint8_t val) {
 	println("writing to reg %04x = %02x", addr, val);
@@ -71,21 +66,29 @@ uint8_t sound_read_wavetable (uint16_t addr) {
 	return waveram[addr % 0xFF30];
 }
 
-static void sound_frame() {
-	for (int i = 0; i < SOUND_SAMPLE_RATE; ++i) {
-		buffer[i] = sq_wavetables[2][i % (SOUND_SAMPLE_RATE / 8)] * 8000;
-	}
+const double PI2 = 6.28318530718f;
+float t = 0.0f;
+float freq = 440.0f;
 
-	audio_send_samples(buffer, 1024);
+void sound_callback(void* userdata, uint8_t* stream, int len) {
+	int16_t* buffer = (int16_t*) stream;
+	len /= sizeof(*buffer);
+
+	for (int i = 0; i < len; ++i) {
+		buffer[i] = sin(t) * 32000;
+
+		t += freq * PI2 / SOUND_SAMPLE_RATE;
+		if(t >= PI2)
+			t -= PI2;
+	}
 }
 
 static int steps = 0;
-
 void sound_step (int cycles) {
 	steps += cycles;
 
 	if (steps > (CPU_FREQ/60.0)) {
-		sound_frame();
+		// here we will simulate out audio interface
 		steps = 0;
 	}
 }

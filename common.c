@@ -11,6 +11,9 @@ static key_handler       key_up_handler   = NULL;
 static key_handler       key_down_handler = NULL;
 static SDL_AudioDeviceID audio_dev        = 0;
 
+static void audio_callback(void* userdata, uint8_t* stream, int len);
+static sound_callback_fn callback_fn;
+
 void common_init (void) {
 	log_file = stdout;
 
@@ -26,18 +29,16 @@ void common_init (void) {
 	SDL_RenderSetScale(renderer, (float) RENDER_SCALE, (float) RENDER_SCALE);
 
 	// sound init
-	SDL_AudioSpec desiredSpec;
+	SDL_AudioSpec desiredSpec, givenSpec;
 
-	desiredSpec.freq     = SOUND_FREQUENCY;
+	desiredSpec.freq     = SOUND_SAMPLE_RATE;
 	desiredSpec.format   = AUDIO_S16SYS;
 	desiredSpec.channels = 1;
-	desiredSpec.samples  = SOUND_SAMPLE_RATE;
-	desiredSpec.callback = NULL;
+	desiredSpec.samples  = 1024;
+	desiredSpec.callback = audio_callback;
 	desiredSpec.userdata = NULL;
 
-	audio_dev = SDL_OpenAudioDevice(NULL, 0, &desiredSpec, NULL, 0);
-
-	SDL_PauseAudioDevice(audio_dev, 0);
+	audio_dev = SDL_OpenAudioDevice(NULL, 0, &desiredSpec, &givenSpec, 0);
 }
 
 void file_load_rom (const char *rom_filename) {
@@ -89,13 +90,15 @@ void screen_clear (void) {
 	SDL_RenderClear(renderer);
 }
 
-void audio_send_samples (int16_t *samples, int len) {
-	int32_t queued = SDL_GetQueuedAudioSize(audio_dev);
+void sound_set_callback(sound_callback_fn callback) {
+	callback_fn = callback;
 
-	if (queued <= (SOUND_SAMPLE_RATE / 60.0) * 5) {
-		SDL_QueueAudio(audio_dev, (uint8_t *)samples, len * 2);
-	} else {
-		SDL_ClearQueuedAudio(audio_dev);
+	SDL_PauseAudioDevice(audio_dev, 0);
+}
+
+static void audio_callback(void* userdata, uint8_t* stream, int len) {
+	if (callback_fn != NULL) {
+		callback_fn(userdata, stream, len);
 	}
 }
 

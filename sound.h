@@ -13,4 +13,6 @@ uint8_t sound_read_wavetable (uint16_t addr);
 
 void sound_step (int cycles);
 
+void sound_callback(void* userdata, uint8_t* stream, int len);
+
 #endif

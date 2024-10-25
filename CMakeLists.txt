@@ -29,5 +29,5 @@ if (EMSCRIPTEN)
     POST_BUILD
     COMMENT "Creating HTML file, please copy index.* files to your server root dir")
 else()
-    target_link_libraries(smallconsole "${SDL2_LIBRARY}")
+    target_link_libraries(smallconsole "${SDL2_LIBRARY}" "-lm") 
 endif()

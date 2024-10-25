@@ -6,7 +6,7 @@
 #include "sound.h"
 
 void render_frame () {
-    int cycles = 0;
+  int cycles = 0;
 	int frame_cycles = CPU_FREQ / 60.0;
 	while(frame_cycles > 0) {
 		cycles = cpu_step();
@@ -78,11 +78,13 @@ int main(int argc, char *argv[]) {
 
 	keyboard_set_handlers(joypad_key_down, joypad_key_up);
 
+	sound_set_callback(sound_callback);
+
 	gpu_init();
 	cpu_init();
 
 #ifndef __EMSCRIPTEN__
-	file_load_rom("zelda.gb");
+	file_load_rom("game.gb");
 
 	while (!quit || SDL_GetAudioStatus() == SDL_AUDIO_PLAYING) {
 		while (SDL_PollEvent(&e) != 0) {

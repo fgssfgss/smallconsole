@@ -27,9 +27,10 @@
 #define RENDER_WIDTH (SCREEN_WIDTH * RENDER_SCALE)
 #define RENDER_HEIGHT (SCREEN_HEIGHT * RENDER_SCALE)
 
-#define SOUND_FREQUENCY 44100
-#define SOUND_SAMPLE_RATE 1024
+#define SOUND_SAMPLE_RATE 48000
 #define CPU_FREQ 4213440 // in HZ
+
+typedef void (*sound_callback_fn)(void *usedata, uint8_t* stream, int len);
 
 typedef void (*key_handler) (int key);
 
@@ -60,5 +61,7 @@ void audio_send_samples (int16_t* samples, int len);
 void keyboard_set_handlers (key_handler key_down, key_handler key_up);
 
 void keyboard_handle_input (SDL_Event *event);
+
+void sound_set_callback(sound_callback_fn callback);
 
 #endif /* _COMMON_H_ */
