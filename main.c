@@ -3,7 +3,7 @@
 #include "gpu.h"
 #include "joypad.h"
 #include "timer.h"
-#include "sound.h
+#include "sound.h"
 
 void render_frame () {
     int cycles = 0;

@@ -2366,10 +2366,6 @@ static void cpu_write_register (uint16_t addr, uint8_t val) {
 		sound_write_wavetable(addr, val);
 		break;
 
-	case 0xFF30 ... 0xFF3F:
-		sound_write_wavetable(addr, val);
-		break;
-
 	default:
 		break;
 	}
