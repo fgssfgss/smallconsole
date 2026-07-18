@@ -80,9 +80,30 @@ typedef struct {
 
 
 typedef struct {
+	bool enabled;
+	// NR30
+	bool dac_power;
+	// NR31
+	uint8_t length; // full 8-bit load value (256-L)
+	// NR32
+	uint8_t volume_code:2;
+	// NR33 & NR34
+	uint16_t freq;
+	bool length_enable;
+
+	struct {
+		int length_timer;    // counts down at 256Hz, up to 256
+		uint8_t position;    // 0-31, index into the 32 4-bit samples
+		uint8_t sample_buffer;
+		float phase;
+	} internal;
+} wave;
+
+
+typedef struct {
 	square1 channel1;
 	square2 channel2;
-	// wave channel3;
+	wave channel3;
 	noise channel4;
 	bool master_enabled;
 } sound_state;
@@ -96,7 +117,14 @@ static uint8_t duties[4][8] = {
 		{0, 1, 1, 1, 1, 1, 1, 0},
 };
 static uint8_t divisor[8] = {8, 16, 32, 48, 64, 80, 96, 112};
+static uint8_t wave_shift[4] = {4, 0, 1, 2}; // volume code -> right-shift amount (4 = silent)
 static sound_state state;
+
+// wave RAM holds 32 4-bit samples packed two per byte, high nibble first
+static uint8_t read_wave_sample(uint8_t position) {
+	uint8_t byte = waveram[position / 2];
+	return (position % 2 == 0) ? (byte >> 4) & 0xF : byte & 0xF;
+}
 
 // the frame sequencer clocks length/envelope/sweep at fixed sub-multiples
 // of the CPU clock, independent of the audio sample rate
@@ -162,6 +190,18 @@ static void trigger_channel2() {
 	state.channel2.internal.phase = 0.0f;
 }
 
+static void trigger_channel3() {
+	state.channel3.enabled = state.channel3.dac_power;
+
+	if (state.channel3.internal.length_timer == 0) {
+		state.channel3.internal.length_timer = 256;
+	}
+
+	state.channel3.internal.position = 0;
+	state.channel3.internal.sample_buffer = read_wave_sample(0);
+	state.channel3.internal.phase = 0.0f;
+}
+
 static void trigger_channel4() {
 	bool dac_enabled = (regs[NOISE_START_VOL_ENV_ADD_MODE_PERIOD] & 0xF8) != 0;
 
@@ -197,6 +237,13 @@ static void clock_length() {
 		state.channel4.internal.length_timer--;
 		if (state.channel4.internal.length_timer == 0) {
 			state.channel4.enabled = false;
+		}
+	}
+
+	if (state.channel3.length_enable && state.channel3.internal.length_timer > 0) {
+		state.channel3.internal.length_timer--;
+		if (state.channel3.internal.length_timer == 0) {
+			state.channel3.enabled = false;
 		}
 	}
 }
@@ -299,6 +346,7 @@ void sound_init() {
 	state.master_enabled = true;
 	state.channel1.enabled = false;
 	state.channel2.enabled = false;
+	state.channel3.enabled = false;
 	state.channel4.enabled = false;
 	frame_seq_cycles = 0;
 	frame_seq_step = 0;
@@ -375,6 +423,34 @@ void sound_write_reg (uint16_t addr, uint8_t val) {
 		}
 		break;
 
+	case 0xFF1A: // NR30
+		state.channel3.dac_power = (val & 0x80) != 0;
+		if (!state.channel3.dac_power) {
+			state.channel3.enabled = false;
+		}
+		break;
+
+	case 0xFF1B: // NR31
+		state.channel3.length = val;
+		state.channel3.internal.length_timer = 256 - state.channel3.length;
+		break;
+
+	case 0xFF1C: // NR32
+		state.channel3.volume_code = (val >> 5) & 0x3;
+		break;
+
+	case 0xFF1D: // NR33
+		state.channel3.freq = (state.channel3.freq & 0x700) | val;
+		break;
+
+	case 0xFF1E: // NR34
+		state.channel3.freq = (state.channel3.freq & 0xFF) | ((val & 0x7) << 8);
+		state.channel3.length_enable = (val & 0x40) != 0;
+		if (val & 0x80) {
+			trigger_channel3();
+		}
+		break;
+
 	case 0xFF20: // NR41
 		state.channel4.length = val & 0x3F;
 		state.channel4.internal.length_timer = 64 - state.channel4.length;
@@ -407,12 +483,12 @@ void sound_write_reg (uint16_t addr, uint8_t val) {
 		if (!state.master_enabled) {
 			state.channel1.enabled = false;
 			state.channel2.enabled = false;
+			state.channel3.enabled = false;
 			state.channel4.enabled = false;
 		}
 		break;
 
 	default:
-		// wave channel is stored in regs[] but not mixed into audio output yet
 		break;
 	}
 }
@@ -425,6 +501,7 @@ uint8_t sound_read_reg (uint16_t addr) {
 		val |= state.master_enabled ? 0x80 : 0x00;
 		val |= state.channel1.enabled ? 0x01 : 0x00;
 		val |= state.channel2.enabled ? 0x02 : 0x00;
+		val |= state.channel3.enabled ? 0x04 : 0x00;
 		val |= state.channel4.enabled ? 0x08 : 0x00;
 		return val;
 	}
@@ -461,15 +538,21 @@ void sound_callback(void* userdata, uint8_t* stream, int len) {
 	float right_vol = nr50 & 0x7;
 	float master_vol = ((left_vol + right_vol) / 2.0f + 1.0f) / 8.0f;
 
-	// NR51: bit0/4 = channel1 right/left, bit1/5 = channel2 right/left, bit3/7 = channel4 right/left
+	// NR51: bit0/4 = channel1 right/left, bit1/5 = channel2 right/left,
+	// bit2/6 = channel3 right/left, bit3/7 = channel4 right/left
 	bool ch1_audible = state.master_enabled && state.channel1.enabled && (nr51 & 0x11);
 	bool ch2_audible = state.master_enabled && state.channel2.enabled && (nr51 & 0x22);
+	bool ch3_audible = state.master_enabled && state.channel3.enabled && (nr51 & 0x44);
 	bool ch4_audible = state.master_enabled && state.channel4.enabled && (nr51 & 0x88);
 
 	// tone frequency in Hz = CPU_FREQ / (32 * (2048 - freq)); the duty
 	// waveform has 8 steps, so it advances 8x that rate per second
 	float ch1_step = 8.0f * (CPU_FREQ / 32.0f) / (2048 - state.channel1.freq) / SOUND_SAMPLE_RATE;
 	float ch2_step = 8.0f * (CPU_FREQ / 32.0f) / (2048 - state.channel2.freq) / SOUND_SAMPLE_RATE;
+
+	// wave channel advances one wave-table sample every (2048-freq)*2 cycles
+	int ch3_period = (2048 - state.channel3.freq) * 2;
+	float ch3_step = (CPU_FREQ / (float) ch3_period) / SOUND_SAMPLE_RATE;
 
 	// LFSR shifts once per (divisor << clock_shift) CPU cycles
 	int ch4_period = divisor[state.channel4.divisor_code] << state.channel4.clock_shift;
@@ -496,6 +579,18 @@ void sound_callback(void* userdata, uint8_t* stream, int len) {
 		state.channel2.internal.phase += ch2_step;
 		if (state.channel2.internal.phase >= 8.0f) {
 			state.channel2.internal.phase -= 8.0f;
+		}
+
+		state.channel3.internal.phase += ch3_step;
+		while (state.channel3.internal.phase >= 1.0f) {
+			state.channel3.internal.phase -= 1.0f;
+			state.channel3.internal.position = (state.channel3.internal.position + 1) & 0x1F;
+			state.channel3.internal.sample_buffer = read_wave_sample(state.channel3.internal.position);
+		}
+		if (ch3_audible) {
+			uint8_t wshift = wave_shift[state.channel3.volume_code];
+			float digital = (wshift == 4) ? 0.0f : (float) (state.channel3.internal.sample_buffer >> wshift);
+			sample += digital - 7.5f;
 		}
 
 		state.channel4.internal.phase += ch4_step;
