@@ -132,6 +132,18 @@ static uint8_t read_wave_sample(uint8_t position) {
 static int frame_seq_cycles = 0;
 static uint8_t frame_seq_step = 0;
 
+// post-mix filtering: naive (non-band-limited) square/noise/wave synthesis
+// produces harsh edges whose harmonics alias badly once several channels are
+// summed together, which is what makes a busy mix sound "choppy"/crackly. A
+// gentle low-pass smooths those edges, and a DC-blocking high-pass keeps the
+// signal centered so loudness doesn't drift as the number of active channels
+// (and therefore the DC bias contributed by our per-channel centering) changes.
+#define LOWPASS_CUTOFF_HZ  12000.0f
+#define HIGHPASS_CUTOFF_HZ 20.0f
+static float lowpass_state = 0.0f;
+static float highpass_prev_in = 0.0f;
+static float highpass_prev_out = 0.0f;
+
 static void dump_channel1() {
 	printf("SOUND: channel1 regs:\n sweep_period 0x%x negate %d shift 0x%x\n duty 0x%x length 0x%x\n volume 0x%x direction %d envelope_period 0x%x\n freq %d length_enable %d enabled %d\n", state.channel1.sweep_period, state.channel1.negate, state.channel1.shift, state.channel1.duty, state.channel1.length, state.channel1.volume, state.channel1.direction, state.channel1.envelope_period, state.channel1.freq, state.channel1.length_enable, state.channel1.enabled);
 }
@@ -558,6 +570,13 @@ void sound_callback(void* userdata, uint8_t* stream, int len) {
 	int ch4_period = divisor[state.channel4.divisor_code] << state.channel4.clock_shift;
 	float ch4_step = (CPU_FREQ / (float) ch4_period) / SOUND_SAMPLE_RATE;
 
+	const float PI = 3.14159265358979f;
+	float dt = 1.0f / SOUND_SAMPLE_RATE;
+	float lp_rc = 1.0f / (2.0f * PI * LOWPASS_CUTOFF_HZ);
+	float lp_alpha = dt / (lp_rc + dt);
+	float hp_rc = 1.0f / (2.0f * PI * HIGHPASS_CUTOFF_HZ);
+	float hp_alpha = hp_rc / (hp_rc + dt);
+
 	for (int i = 0; i < len; ++i) {
 		float sample = 0.0f;
 
@@ -603,11 +622,22 @@ void sound_callback(void* userdata, uint8_t* stream, int len) {
 			sample += digital - 7.5f;
 		}
 
-		sample *= master_vol * 2000.0f;
+		// smooth the naive digital edges (anti-aliasing)
+		lowpass_state += lp_alpha * (sample - lowpass_state);
+		float filtered = lowpass_state;
 
-		if (sample > 32000.0f) sample = 32000.0f;
-		if (sample < -32000.0f) sample = -32000.0f;
+		// block DC so loudness stays consistent regardless of how many
+		// channels are contributing to the per-channel centering
+		float hp_out = filtered - highpass_prev_in + hp_alpha * highpass_prev_out;
+		highpass_prev_in = filtered;
+		highpass_prev_out = hp_out;
 
-		buffer[i] = (int16_t) sample;
+		float scaled = hp_out * master_vol * 2600.0f;
+
+		// soft-knee limiter: compresses peaks smoothly instead of hard
+		// clipping into a crackly flat-top when several channels stack up
+		float limited = tanhf(scaled / 32000.0f) * 32000.0f;
+
+		buffer[i] = (int16_t) limited;
 	}
 }
