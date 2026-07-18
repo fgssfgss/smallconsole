@@ -4,16 +4,16 @@
 typedef struct {
 	bool enabled;
 	// NR10
-	int sweep_period:3;
+	uint8_t sweep_period:3;
 	bool negate;
-	int shift:3;
+	uint8_t shift:3;
 	// NR11
-	int duty:2;
-	int length:6;
+	uint8_t duty:2;
+	uint8_t length:6;
 	// NR12
-	int volume:4;
+	uint8_t volume:4;
 	bool direction;
-	int envelope_period:3;
+	uint8_t envelope_period:3;
 	// NR13 & NR14
 	uint16_t freq;
 	bool length_enable;
@@ -29,13 +29,13 @@ typedef struct {
 	bool enabled;
 	// NR20 unused
 	// NR21
-	int duty:2;
-	int length:6;
-	// NR22
-	int volume:4;
+	uint8_t duty:2;
+	uint8_t length:6;
+	// NR12
+	uint8_t volume:4;
 	bool direction;
-	int envelope_period:3;
-	// NR23 & NR24
+	uint8_t envelope_period:3;
+	// NR13 & NR14
 	uint16_t freq;
 	bool length_enable;
 	bool trigger;
@@ -120,7 +120,9 @@ static void reset_channel2() {
 	}
 }
 
-
+static void dump_channel1() {
+	printf("SOUND: channel1 regs:\n sweep_period 0x%x negate %d shift 0x%x\n duty 0x%x length 0x%x\n volume 0x%x direction %d envelope_period 0x%x\n freq %d length_enable %d trigger %d\n", state.channel1.sweep_period, state.channel1.negate, state.channel1.shift, state.channel1.duty, state.channel1.length, state.channel1.volume, state.channel1.direction, state.channel1.envelope_period, state.channel1.freq, state.channel1.length_enable, state.channel1.trigger);
+}
 
 
 
@@ -130,22 +132,22 @@ static void reset_channel2() {
 
 
 void sound_write_reg (uint16_t addr, uint8_t val) {
-	println("SOUND: writing to reg %04x = %02x", addr, val);
+	//println("SOUND: writing to reg %04x = %02x", addr, val);
 	regs[addr % 0xFF10] = val;
 }
 
 uint8_t sound_read_reg (uint16_t addr) {
-	println("SOUND: reading from reg %04x = %02x", addr);
+	//println("SOUND: reading from reg %04x = %02x", addr);
 	return regs[addr % 0xFF10];
 }
 
 void sound_write_wavetable (uint16_t addr, uint8_t val) {
-	println("SOUND: writing to wavetable %04x = %02x", addr, val);
+	//println("SOUND: writing to wavetable %04x = %02x", addr, val);
 	waveram[addr % 0xFF30] = val;
 }
 
 uint8_t sound_read_wavetable (uint16_t addr) {
-	println("SOUND: reading from wavetable %04x = %02x", addr);
+	//println("SOUND: reading from wavetable %04x = %02x", addr);
 	return waveram[addr % 0xFF30];
 }
 
@@ -186,6 +188,9 @@ void sound_step (int cycles) {
 	steps += cycles;
 
 	if (steps > (CPU_FREQ/60.0)) {
+		init_channel1();
+		reset_channel1();
+		dump_channel1();
 		// here we will simulate out audio interface
 		flag++;
 		freq = (flag % 2) ? 391.0f : 440.0f;

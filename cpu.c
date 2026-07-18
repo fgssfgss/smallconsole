@@ -6,6 +6,8 @@
 #include "timer.h"
 #include "sound.h"
 
+// refactor me
+
 enum flags {
 	C = 4,
 	H = 5,
