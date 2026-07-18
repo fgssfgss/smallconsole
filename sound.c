@@ -55,10 +55,35 @@ typedef struct {
 
 
 typedef struct {
+	bool enabled;
+	// NR41
+	uint8_t length:6;
+	// NR42
+	uint8_t volume:4;
+	bool direction;
+	uint8_t envelope_period:3;
+	// NR43
+	uint8_t clock_shift:4;
+	bool width_mode;
+	uint8_t divisor_code:3;
+	// NR44
+	bool length_enable;
+
+	struct {
+		int length_timer;
+		int envelope_timer;
+		uint8_t current_volume;
+		uint16_t lfsr;   // 15-bit linear feedback shift register
+		float phase;     // fractional LFSR shifts accumulated for the current sample
+	} internal;
+} noise;
+
+
+typedef struct {
 	square1 channel1;
 	square2 channel2;
 	// wave channel3;
-	// noise channel4;
+	noise channel4;
 	bool master_enabled;
 } sound_state;
 
@@ -137,6 +162,22 @@ static void trigger_channel2() {
 	state.channel2.internal.phase = 0.0f;
 }
 
+static void trigger_channel4() {
+	bool dac_enabled = (regs[NOISE_START_VOL_ENV_ADD_MODE_PERIOD] & 0xF8) != 0;
+
+	state.channel4.enabled = dac_enabled;
+
+	if (state.channel4.internal.length_timer == 0) {
+		state.channel4.internal.length_timer = 64;
+	}
+
+	state.channel4.internal.envelope_timer = state.channel4.envelope_period ? state.channel4.envelope_period : 8;
+	state.channel4.internal.current_volume = state.channel4.volume;
+
+	state.channel4.internal.lfsr = 0x7FFF;
+	state.channel4.internal.phase = 0.0f;
+}
+
 static void clock_length() {
 	if (state.channel1.length_enable && state.channel1.internal.length_timer > 0) {
 		state.channel1.internal.length_timer--;
@@ -149,6 +190,13 @@ static void clock_length() {
 		state.channel2.internal.length_timer--;
 		if (state.channel2.internal.length_timer == 0) {
 			state.channel2.enabled = false;
+		}
+	}
+
+	if (state.channel4.length_enable && state.channel4.internal.length_timer > 0) {
+		state.channel4.internal.length_timer--;
+		if (state.channel4.internal.length_timer == 0) {
+			state.channel4.enabled = false;
 		}
 	}
 }
@@ -179,6 +227,36 @@ static void clock_envelope() {
 			}
 		}
 	}
+
+	if (state.channel4.envelope_period != 0) {
+		state.channel4.internal.envelope_timer--;
+		if (state.channel4.internal.envelope_timer <= 0) {
+			state.channel4.internal.envelope_timer = state.channel4.envelope_period;
+			if (state.channel4.direction && state.channel4.internal.current_volume < 15) {
+				state.channel4.internal.current_volume++;
+			}
+			else if (!state.channel4.direction && state.channel4.internal.current_volume > 0) {
+				state.channel4.internal.current_volume--;
+			}
+		}
+	}
+}
+
+// clocks the LFSR once: XOR bits 0 and 1, shift right, feed the result into
+// bit 14 (and also bit 6 in 7-bit width mode). The waveform output is bit 0
+// of the resulting register, inverted (read directly by the caller).
+static void noise_shift_lfsr() {
+	uint16_t lfsr = state.channel4.internal.lfsr;
+	uint8_t xor_bit = (lfsr & 0x1) ^ ((lfsr >> 1) & 0x1);
+
+	lfsr >>= 1;
+	lfsr |= (xor_bit << 14);
+
+	if (state.channel4.width_mode) {
+		lfsr = (lfsr & ~0x40) | (xor_bit << 6);
+	}
+
+	state.channel4.internal.lfsr = lfsr;
 }
 
 static void clock_sweep() {
@@ -221,6 +299,7 @@ void sound_init() {
 	state.master_enabled = true;
 	state.channel1.enabled = false;
 	state.channel2.enabled = false;
+	state.channel4.enabled = false;
 	frame_seq_cycles = 0;
 	frame_seq_step = 0;
 }
@@ -296,17 +375,44 @@ void sound_write_reg (uint16_t addr, uint8_t val) {
 		}
 		break;
 
+	case 0xFF20: // NR41
+		state.channel4.length = val & 0x3F;
+		state.channel4.internal.length_timer = 64 - state.channel4.length;
+		break;
+
+	case 0xFF21: // NR42
+		state.channel4.volume = (val >> 4) & 0xF;
+		state.channel4.direction = (val & 0x8) != 0;
+		state.channel4.envelope_period = val & 0x7;
+		if ((val & 0xF8) == 0) {
+			state.channel4.enabled = false;
+		}
+		break;
+
+	case 0xFF22: // NR43
+		state.channel4.clock_shift = (val >> 4) & 0xF;
+		state.channel4.width_mode = (val & 0x8) != 0;
+		state.channel4.divisor_code = val & 0x7;
+		break;
+
+	case 0xFF23: // NR44
+		state.channel4.length_enable = (val & 0x40) != 0;
+		if (val & 0x80) {
+			trigger_channel4();
+		}
+		break;
+
 	case 0xFF26: // NR52
 		state.master_enabled = (val & 0x80) != 0;
 		if (!state.master_enabled) {
 			state.channel1.enabled = false;
 			state.channel2.enabled = false;
+			state.channel4.enabled = false;
 		}
 		break;
 
 	default:
-		// wave/noise channels and NR50/NR51 are stored in regs[] but not
-		// mixed into audio output yet
+		// wave channel is stored in regs[] but not mixed into audio output yet
 		break;
 	}
 }
@@ -319,6 +425,7 @@ uint8_t sound_read_reg (uint16_t addr) {
 		val |= state.master_enabled ? 0x80 : 0x00;
 		val |= state.channel1.enabled ? 0x01 : 0x00;
 		val |= state.channel2.enabled ? 0x02 : 0x00;
+		val |= state.channel4.enabled ? 0x08 : 0x00;
 		return val;
 	}
 
@@ -354,14 +461,19 @@ void sound_callback(void* userdata, uint8_t* stream, int len) {
 	float right_vol = nr50 & 0x7;
 	float master_vol = ((left_vol + right_vol) / 2.0f + 1.0f) / 8.0f;
 
-	// NR51: bit0/4 = channel1 right/left, bit1/5 = channel2 right/left
+	// NR51: bit0/4 = channel1 right/left, bit1/5 = channel2 right/left, bit3/7 = channel4 right/left
 	bool ch1_audible = state.master_enabled && state.channel1.enabled && (nr51 & 0x11);
 	bool ch2_audible = state.master_enabled && state.channel2.enabled && (nr51 & 0x22);
+	bool ch4_audible = state.master_enabled && state.channel4.enabled && (nr51 & 0x88);
 
 	// tone frequency in Hz = CPU_FREQ / (32 * (2048 - freq)); the duty
 	// waveform has 8 steps, so it advances 8x that rate per second
 	float ch1_step = 8.0f * (CPU_FREQ / 32.0f) / (2048 - state.channel1.freq) / SOUND_SAMPLE_RATE;
 	float ch2_step = 8.0f * (CPU_FREQ / 32.0f) / (2048 - state.channel2.freq) / SOUND_SAMPLE_RATE;
+
+	// LFSR shifts once per (divisor << clock_shift) CPU cycles
+	int ch4_period = divisor[state.channel4.divisor_code] << state.channel4.clock_shift;
+	float ch4_step = (CPU_FREQ / (float) ch4_period) / SOUND_SAMPLE_RATE;
 
 	for (int i = 0; i < len; ++i) {
 		float sample = 0.0f;
@@ -384,6 +496,16 @@ void sound_callback(void* userdata, uint8_t* stream, int len) {
 		state.channel2.internal.phase += ch2_step;
 		if (state.channel2.internal.phase >= 8.0f) {
 			state.channel2.internal.phase -= 8.0f;
+		}
+
+		state.channel4.internal.phase += ch4_step;
+		while (state.channel4.internal.phase >= 1.0f) {
+			state.channel4.internal.phase -= 1.0f;
+			noise_shift_lfsr();
+		}
+		if (ch4_audible) {
+			float digital = (state.channel4.internal.lfsr & 0x1) ? 0.0f : state.channel4.internal.current_volume;
+			sample += digital - 7.5f;
 		}
 
 		sample *= master_vol * 2000.0f;

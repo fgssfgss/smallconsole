@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
 	sound_set_callback(sound_callback);
 
 #ifndef __EMSCRIPTEN__
-	file_load_rom("tetris.gb");
+	file_load_rom("game.gb");
 
 	while (!quit || SDL_GetAudioStatus() == SDL_AUDIO_PLAYING) {
 		while (SDL_PollEvent(&e) != 0) {
@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 #else
-	file_load_rom("tetris.gb");
+	file_load_rom("game.gb");
 	emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, true, key_callback);
 	emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, true, key_callback);
 	emscripten_set_main_loop(render_frame, 60, 1);
