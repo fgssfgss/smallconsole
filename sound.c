@@ -17,10 +17,15 @@ typedef struct {
 	// NR13 & NR14
 	uint16_t freq;
 	bool length_enable;
-	bool trigger;
 
 	struct {
-
+		int length_timer;      // counts down at 256Hz, channel shuts off at 0
+		int envelope_timer;    // counts down at 64Hz
+		uint8_t current_volume;// live envelope output, 0-15
+		int sweep_timer;       // counts down at 128Hz
+		uint16_t shadow_freq;
+		bool sweep_enabled;
+		float phase;           // 0..8 position within the duty waveform
 	} internal;
 } square1;
 
@@ -38,10 +43,12 @@ typedef struct {
 	// NR13 & NR14
 	uint16_t freq;
 	bool length_enable;
-	bool trigger;
 
 	struct {
-
+		int length_timer;
+		int envelope_timer;
+		uint8_t current_volume;
+		float phase;
 	} internal;
 } square2;
 
@@ -52,7 +59,7 @@ typedef struct {
 	square2 channel2;
 	// wave channel3;
 	// noise channel4;
-	// control ???
+	bool master_enabled;
 } sound_state;
 
 static uint8_t regs[0x1F] = {0x80, 0xBF, 0xF3, 0xFF, 0xBF, 0xFF, 0x3F, 0x00, 0xFF, 0xBF, 0x7F, 0xFF, 0x9F, 0xFF, 0xBF, 0xFF, 0xFF, 0x00, 0x00, 0xBF, 0x77, 0xF3, 0xF1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -66,79 +73,256 @@ static uint8_t duties[4][8] = {
 static uint8_t divisor[8] = {8, 16, 32, 48, 64, 80, 96, 112};
 static sound_state state;
 
-static void init_channel1() {
-	state.channel1.sweep_period = (regs[SQ1_SWEEP_NEGATE_SHIFT] >> 4) & 0xf;
-	state.channel1.negate = (regs[SQ1_SWEEP_NEGATE_SHIFT] & 0x8) ? 1 : 0;
-	state.channel1.shift = regs[SQ1_SWEEP_NEGATE_SHIFT] & 0x7;
-
-	state.channel1.duty = (regs[SQ1_DUTY_LENGTH_LOAD] >> 6) & 0x3;
-	state.channel1.length = regs[SQ1_DUTY_LENGTH_LOAD] & 0x3f;
-
-	state.channel1.volume = (regs[SQ1_START_VOL_ENV_ADD_MODE_PERIOD] >> 4) & 0xf;
-	state.channel1.direction = (regs[SQ1_START_VOL_ENV_ADD_MODE_PERIOD] & 0x8) ? 1 : 0;
-	state.channel1.envelope_period = regs[SQ1_START_VOL_ENV_ADD_MODE_PERIOD] & 0x7;
-
-	state.channel1.freq = (regs[SQ1_TRIGGER_LEN_FRQ_MSB] & 0x7) << 8 | regs[SQ1_FRQ_LSB];
-	state.channel1.length_enable = (regs[SQ1_TRIGGER_LEN_FRQ_MSB] & 0x40) ? 1 : 0;
-	state.channel1.trigger = (regs[SQ1_TRIGGER_LEN_FRQ_MSB] & 0x80) ? 1 : 0;
-}
-
-static void init_channel2() {
-	state.channel2.duty = (regs[SQ2_DUTY_LENGTH_LOAD] >> 6) & 0x3;
-	state.channel2.length = regs[SQ2_DUTY_LENGTH_LOAD] & 0x3f;
-
-	state.channel2.volume = (regs[SQ2_START_VOL_ENV_ADD_MODE_PERIOD] >> 4) & 0xf;
-	state.channel2.direction = (regs[SQ2_START_VOL_ENV_ADD_MODE_PERIOD] & 0x8) ? 1 : 0;
-	state.channel2.envelope_period = regs[SQ2_START_VOL_ENV_ADD_MODE_PERIOD] & 0x7;
-
-	state.channel2.freq = (regs[SQ2_TRIGGER_LEN_FRQ_MSB] & 0x7) << 8 | regs[SQ1_FRQ_LSB];
-	state.channel2.length_enable = (regs[SQ2_TRIGGER_LEN_FRQ_MSB] & 0x40) ? 1 : 0;
-	state.channel2.trigger = (regs[SQ2_TRIGGER_LEN_FRQ_MSB] & 0x80) ? 1 : 0;
-}
-
-static void reset_channel1() {
-	state.channel1.trigger = false;
-	regs[SQ1_TRIGGER_LEN_FRQ_MSB] &= ~0x80;
-
-	// set envlope initial volume
-	// enable more stuff internally
-	state.channel1.enabled = true;
-	if (state.channel1.length_enable) {
-		// copy length to internal register
-	}
-}
-
-static void reset_channel2() {
-	state.channel2.trigger = false;
-	regs[SQ2_TRIGGER_LEN_FRQ_MSB] &= ~0x80;
-
-	// set envlope initial volume
-	// enable more stuff internally
-	state.channel2.enabled = true;
-	if (state.channel2.length_enable) {
-		// copy length to internal register
-	}
-}
+// the frame sequencer clocks length/envelope/sweep at fixed sub-multiples
+// of the CPU clock, independent of the audio sample rate
+#define FRAME_SEQUENCER_PERIOD (CPU_FREQ / 512)
+static int frame_seq_cycles = 0;
+static uint8_t frame_seq_step = 0;
 
 static void dump_channel1() {
-	printf("SOUND: channel1 regs:\n sweep_period 0x%x negate %d shift 0x%x\n duty 0x%x length 0x%x\n volume 0x%x direction %d envelope_period 0x%x\n freq %d length_enable %d trigger %d\n", state.channel1.sweep_period, state.channel1.negate, state.channel1.shift, state.channel1.duty, state.channel1.length, state.channel1.volume, state.channel1.direction, state.channel1.envelope_period, state.channel1.freq, state.channel1.length_enable, state.channel1.trigger);
+	printf("SOUND: channel1 regs:\n sweep_period 0x%x negate %d shift 0x%x\n duty 0x%x length 0x%x\n volume 0x%x direction %d envelope_period 0x%x\n freq %d length_enable %d enabled %d\n", state.channel1.sweep_period, state.channel1.negate, state.channel1.shift, state.channel1.duty, state.channel1.length, state.channel1.volume, state.channel1.direction, state.channel1.envelope_period, state.channel1.freq, state.channel1.length_enable, state.channel1.enabled);
 }
 
+static uint16_t sweep_calc_freq() {
+	uint16_t delta = state.channel1.internal.shadow_freq >> state.channel1.shift;
+	uint16_t new_freq = state.channel1.negate
+		? state.channel1.internal.shadow_freq - delta
+		: state.channel1.internal.shadow_freq + delta;
 
+	if (new_freq > 2047) {
+		state.channel1.enabled = false;
+	}
 
+	return new_freq;
+}
 
+static void trigger_channel1() {
+	bool dac_enabled = (regs[SQ1_START_VOL_ENV_ADD_MODE_PERIOD] & 0xF8) != 0;
 
+	state.channel1.enabled = dac_enabled;
 
+	if (state.channel1.internal.length_timer == 0) {
+		state.channel1.internal.length_timer = 64;
+	}
 
+	state.channel1.internal.envelope_timer = state.channel1.envelope_period ? state.channel1.envelope_period : 8;
+	state.channel1.internal.current_volume = state.channel1.volume;
+
+	state.channel1.internal.shadow_freq = state.channel1.freq;
+	state.channel1.internal.sweep_timer = state.channel1.sweep_period ? state.channel1.sweep_period : 8;
+	state.channel1.internal.sweep_enabled = (state.channel1.sweep_period != 0) || (state.channel1.shift != 0);
+	if (state.channel1.shift != 0) {
+		sweep_calc_freq(); // overflow check only, result is discarded on trigger
+	}
+
+	state.channel1.internal.phase = 0.0f;
+
+#ifdef DEBUG_BUILD
+	dump_channel1();
+#endif
+}
+
+static void trigger_channel2() {
+	bool dac_enabled = (regs[SQ2_START_VOL_ENV_ADD_MODE_PERIOD] & 0xF8) != 0;
+
+	state.channel2.enabled = dac_enabled;
+
+	if (state.channel2.internal.length_timer == 0) {
+		state.channel2.internal.length_timer = 64;
+	}
+
+	state.channel2.internal.envelope_timer = state.channel2.envelope_period ? state.channel2.envelope_period : 8;
+	state.channel2.internal.current_volume = state.channel2.volume;
+
+	state.channel2.internal.phase = 0.0f;
+}
+
+static void clock_length() {
+	if (state.channel1.length_enable && state.channel1.internal.length_timer > 0) {
+		state.channel1.internal.length_timer--;
+		if (state.channel1.internal.length_timer == 0) {
+			state.channel1.enabled = false;
+		}
+	}
+
+	if (state.channel2.length_enable && state.channel2.internal.length_timer > 0) {
+		state.channel2.internal.length_timer--;
+		if (state.channel2.internal.length_timer == 0) {
+			state.channel2.enabled = false;
+		}
+	}
+}
+
+static void clock_envelope() {
+	if (state.channel1.envelope_period != 0) {
+		state.channel1.internal.envelope_timer--;
+		if (state.channel1.internal.envelope_timer <= 0) {
+			state.channel1.internal.envelope_timer = state.channel1.envelope_period;
+			if (state.channel1.direction && state.channel1.internal.current_volume < 15) {
+				state.channel1.internal.current_volume++;
+			}
+			else if (!state.channel1.direction && state.channel1.internal.current_volume > 0) {
+				state.channel1.internal.current_volume--;
+			}
+		}
+	}
+
+	if (state.channel2.envelope_period != 0) {
+		state.channel2.internal.envelope_timer--;
+		if (state.channel2.internal.envelope_timer <= 0) {
+			state.channel2.internal.envelope_timer = state.channel2.envelope_period;
+			if (state.channel2.direction && state.channel2.internal.current_volume < 15) {
+				state.channel2.internal.current_volume++;
+			}
+			else if (!state.channel2.direction && state.channel2.internal.current_volume > 0) {
+				state.channel2.internal.current_volume--;
+			}
+		}
+	}
+}
+
+static void clock_sweep() {
+	if (state.channel1.internal.sweep_timer > 0) {
+		state.channel1.internal.sweep_timer--;
+		if (state.channel1.internal.sweep_timer == 0) {
+			state.channel1.internal.sweep_timer = state.channel1.sweep_period ? state.channel1.sweep_period : 8;
+
+			if (state.channel1.internal.sweep_enabled && state.channel1.sweep_period > 0) {
+				uint16_t new_freq = sweep_calc_freq();
+
+				if (new_freq <= 2047 && state.channel1.shift > 0) {
+					state.channel1.internal.shadow_freq = new_freq;
+					state.channel1.freq = new_freq;
+					regs[SQ1_FRQ_LSB] = new_freq & 0xFF;
+					regs[SQ1_TRIGGER_LEN_FRQ_MSB] = (regs[SQ1_TRIGGER_LEN_FRQ_MSB] & ~0x7) | ((new_freq >> 8) & 0x7);
+
+					sweep_calc_freq(); // second overflow check, per hardware behavior
+				}
+			}
+		}
+	}
+}
+
+static void frame_sequencer_tick() {
+	if ((frame_seq_step & 1) == 0) {
+		clock_length();
+	}
+	if (frame_seq_step == 2 || frame_seq_step == 6) {
+		clock_sweep();
+	}
+	if (frame_seq_step == 7) {
+		clock_envelope();
+	}
+
+	frame_seq_step = (frame_seq_step + 1) & 0x7;
+}
+
+void sound_init() {
+	state.master_enabled = true;
+	state.channel1.enabled = false;
+	state.channel2.enabled = false;
+	frame_seq_cycles = 0;
+	frame_seq_step = 0;
+}
 
 void sound_write_reg (uint16_t addr, uint8_t val) {
 	//println("SOUND: writing to reg %04x = %02x", addr, val);
-	regs[addr % 0xFF10] = val;
+
+	if (!state.master_enabled && addr != 0xFF26) {
+		// while the APU is powered off, writes to every register but NR52 are ignored
+		return;
+	}
+
+	regs[addr - 0xFF10] = val;
+
+	switch (addr) {
+	case 0xFF10: // NR10
+		state.channel1.sweep_period = (val >> 4) & 0x7;
+		state.channel1.negate = (val & 0x8) != 0;
+		state.channel1.shift = val & 0x7;
+		break;
+
+	case 0xFF11: // NR11
+		state.channel1.duty = (val >> 6) & 0x3;
+		state.channel1.length = val & 0x3F;
+		state.channel1.internal.length_timer = 64 - state.channel1.length;
+		break;
+
+	case 0xFF12: // NR12
+		state.channel1.volume = (val >> 4) & 0xF;
+		state.channel1.direction = (val & 0x8) != 0;
+		state.channel1.envelope_period = val & 0x7;
+		if ((val & 0xF8) == 0) {
+			state.channel1.enabled = false; // DAC off silences the channel immediately
+		}
+		break;
+
+	case 0xFF13: // NR13
+		state.channel1.freq = (state.channel1.freq & 0x700) | val;
+		break;
+
+	case 0xFF14: // NR14
+		state.channel1.freq = (state.channel1.freq & 0xFF) | ((val & 0x7) << 8);
+		state.channel1.length_enable = (val & 0x40) != 0;
+		if (val & 0x80) {
+			trigger_channel1();
+		}
+		break;
+
+	case 0xFF16: // NR21
+		state.channel2.duty = (val >> 6) & 0x3;
+		state.channel2.length = val & 0x3F;
+		state.channel2.internal.length_timer = 64 - state.channel2.length;
+		break;
+
+	case 0xFF17: // NR22
+		state.channel2.volume = (val >> 4) & 0xF;
+		state.channel2.direction = (val & 0x8) != 0;
+		state.channel2.envelope_period = val & 0x7;
+		if ((val & 0xF8) == 0) {
+			state.channel2.enabled = false;
+		}
+		break;
+
+	case 0xFF18: // NR23
+		state.channel2.freq = (state.channel2.freq & 0x700) | val;
+		break;
+
+	case 0xFF19: // NR24
+		state.channel2.freq = (state.channel2.freq & 0xFF) | ((val & 0x7) << 8);
+		state.channel2.length_enable = (val & 0x40) != 0;
+		if (val & 0x80) {
+			trigger_channel2();
+		}
+		break;
+
+	case 0xFF26: // NR52
+		state.master_enabled = (val & 0x80) != 0;
+		if (!state.master_enabled) {
+			state.channel1.enabled = false;
+			state.channel2.enabled = false;
+		}
+		break;
+
+	default:
+		// wave/noise channels and NR50/NR51 are stored in regs[] but not
+		// mixed into audio output yet
+		break;
+	}
 }
 
 uint8_t sound_read_reg (uint16_t addr) {
 	//println("SOUND: reading from reg %04x = %02x", addr);
-	return regs[addr % 0xFF10];
+
+	if (addr == 0xFF26) {
+		uint8_t val = 0x70; // unused bits always read back as 1
+		val |= state.master_enabled ? 0x80 : 0x00;
+		val |= state.channel1.enabled ? 0x01 : 0x00;
+		val |= state.channel2.enabled ? 0x02 : 0x00;
+		return val;
+	}
+
+	return regs[addr - 0xFF10];
 }
 
 void sound_write_wavetable (uint16_t addr, uint8_t val) {
@@ -151,51 +335,62 @@ uint8_t sound_read_wavetable (uint16_t addr) {
 	return waveram[addr % 0xFF30];
 }
 
-const double PI2 = 6.28318530718f;
-float t = 0.0f;
-float t2 = 0.0f;
-float t3 = 0.0f;
-float freq = 391.0f;
-float freq2 = 493.0f;
-float freq3 = 587.0f;
+void sound_step (int cycles) {
+	frame_seq_cycles += cycles;
+
+	while (frame_seq_cycles >= FRAME_SEQUENCER_PERIOD) {
+		frame_seq_cycles -= FRAME_SEQUENCER_PERIOD;
+		frame_sequencer_tick();
+	}
+}
 
 void sound_callback(void* userdata, uint8_t* stream, int len) {
 	int16_t* buffer = (int16_t*) stream;
 	len /= sizeof(*buffer);
 
-	memset(buffer, 0x00, len * sizeof(*buffer));
+	uint8_t nr50 = regs[CTRL_VIN_L_EN_VIN_R_EN];
+	uint8_t nr51 = regs[CTRL_LEFT_RIGHT_ENABLE];
+	float left_vol = (nr50 >> 4) & 0x7;
+	float right_vol = nr50 & 0x7;
+	float master_vol = ((left_vol + right_vol) / 2.0f + 1.0f) / 8.0f;
+
+	// NR51: bit0/4 = channel1 right/left, bit1/5 = channel2 right/left
+	bool ch1_audible = state.master_enabled && state.channel1.enabled && (nr51 & 0x11);
+	bool ch2_audible = state.master_enabled && state.channel2.enabled && (nr51 & 0x22);
+
+	// tone frequency in Hz = CPU_FREQ / (32 * (2048 - freq)); the duty
+	// waveform has 8 steps, so it advances 8x that rate per second
+	float ch1_step = 8.0f * (CPU_FREQ / 32.0f) / (2048 - state.channel1.freq) / SOUND_SAMPLE_RATE;
+	float ch2_step = 8.0f * (CPU_FREQ / 32.0f) / (2048 - state.channel2.freq) / SOUND_SAMPLE_RATE;
 
 	for (int i = 0; i < len; ++i) {
-		buffer[i] = sin(t) * 10000 + sin(t2) * 10000 + sin(t3) * 10000;
+		float sample = 0.0f;
 
-		t += freq * PI2 / SOUND_SAMPLE_RATE;
-		if(t >= PI2)
-			t -= PI2;
+		if (ch1_audible) {
+			int duty_idx = ((int) state.channel1.internal.phase) & 0x7;
+			float digital = duties[state.channel1.duty][duty_idx] ? state.channel1.internal.current_volume : 0.0f;
+			sample += digital - 7.5f;
+		}
+		state.channel1.internal.phase += ch1_step;
+		if (state.channel1.internal.phase >= 8.0f) {
+			state.channel1.internal.phase -= 8.0f;
+		}
 
-		t2 += freq2 * PI2 / SOUND_SAMPLE_RATE;
-		if(t2 >= PI2)
-			t2 -= PI2;
+		if (ch2_audible) {
+			int duty_idx = ((int) state.channel2.internal.phase) & 0x7;
+			float digital = duties[state.channel2.duty][duty_idx] ? state.channel2.internal.current_volume : 0.0f;
+			sample += digital - 7.5f;
+		}
+		state.channel2.internal.phase += ch2_step;
+		if (state.channel2.internal.phase >= 8.0f) {
+			state.channel2.internal.phase -= 8.0f;
+		}
 
-		t3 += freq3 * PI2 / SOUND_SAMPLE_RATE;
-		if(t3 >= PI2)
-			t3 -= PI2;
-	}
-}
+		sample *= master_vol * 2000.0f;
 
-static int steps = 0;
-static int flag = 0;
-void sound_step (int cycles) {
-	steps += cycles;
+		if (sample > 32000.0f) sample = 32000.0f;
+		if (sample < -32000.0f) sample = -32000.0f;
 
-	if (steps > (CPU_FREQ/60.0)) {
-		init_channel1();
-		reset_channel1();
-		dump_channel1();
-		// here we will simulate out audio interface
-		flag++;
-		freq = (flag % 2) ? 391.0f : 440.0f;
-		freq2 = (flag % 2) ? 493.0f : 523.0f;
-		freq3 = (flag % 2) ? 587.0f : 659.0f;
-		steps = 0;
+		buffer[i] = (int16_t) sample;
 	}
 }
