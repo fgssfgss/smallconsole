@@ -467,6 +467,7 @@ typedef struct {
 	uint16_t pc;
 
 	bool stop;
+	bool halted;
 
 	bool boot_rom_enabled;
 
@@ -619,6 +620,7 @@ static uint8_t boot_rom[256] = {
 
 void cpu_init () {
 	cpu.stop             = false;
+	cpu.halted           = false;
 	cpu.pc               = 0x0000;
 	cpu.sp               = 0x0000;
 	cpu.ime              = 0;
@@ -681,17 +683,49 @@ uint8_t cpu_get_dma (uint8_t start_addr, uint8_t index) {
 	return read_byte(addr);
 }
 
+#ifdef DEBUG_BUILD
+// debug/diagnostic counters, see cpu_get_debug_stats()
+static uint32_t debug_halted_cycles = 0;
+static uint32_t debug_active_cycles = 0;
+#endif
+
 int cpu_step (void) {
 	int cycles = 0;
 
 	if (!cpu.stop) {
-		cycles = cpu_step_real();
+		if (cpu.halted) {
+			// sleep in fixed 4-cycle (1 M-cycle) steps; a pending interrupt
+			// wakes the CPU regardless of IME (if IME is off, execution
+			// simply resumes after HALT without servicing the interrupt)
+			cycles = 4;
+			if (cpu.interrupt_flag & cpu.interrupt_enable) {
+				cpu.halted = false;
+			}
+#ifdef DEBUG_BUILD
+			debug_halted_cycles += cycles;
+#endif
+		}
+		else {
+			cycles = cpu_step_real();
+#ifdef DEBUG_BUILD
+			debug_active_cycles += cycles;
+#endif
+		}
 
 		handle_interrupts();
 	}
 
 	return cycles;
 }
+
+#ifdef DEBUG_BUILD
+void cpu_get_debug_stats (uint32_t *halted_cycles, uint32_t *active_cycles) {
+	*halted_cycles = debug_halted_cycles;
+	*active_cycles = debug_active_cycles;
+	debug_halted_cycles = 0;
+	debug_active_cycles = 0;
+}
+#endif
 
 static int cpu_step_real (void) {
 	uint8_t instr  = read_byte(cpu.pc++);
@@ -794,7 +828,13 @@ static void cpu_instr_0x0f(int *cycles) {
 
 static void cpu_instr_0x10(int *cycles) {
 	// STOP
-	println("STOP");
+#ifdef DEBUG_BUILD
+	static int reported = 0;
+	if (reported < 8) {
+		println("STOP at PC=0x%04x (report %d/8)", (uint16_t) (cpu.pc - 1), reported + 1);
+		reported++;
+	}
+#endif
 }
 
 static void cpu_instr_0x11(int *cycles) {
@@ -1348,7 +1388,8 @@ static void cpu_instr_0x75(int *cycles) {
 }
 
 static void cpu_instr_0x76(int *cycles) {
-	// HALT
+	// HALT: stop fetching instructions until a pending interrupt wakes the CPU
+	cpu.halted = true;
 }
 
 static void cpu_instr_0x77(int *cycles) {
@@ -1874,9 +1915,27 @@ static void cpu_instr_0xd2(int *cycles) {
 	}
 }
 
+// these 11 opcodes are illegal on real GB hardware and should never appear
+// in valid ROM code; if one fires, the CPU has desynced (e.g. an earlier
+// instruction advanced PC by the wrong number of bytes) and is now decoding
+// garbage as instructions. Capped and rate-limited so that a desync loop
+// doesn't itself stall the emulator the way an uncapped println() would.
+static void debug_illegal_opcode (uint8_t opcode) {
+#ifdef DEBUG_BUILD
+	static int reported = 0;
+
+	if (reported < 8) {
+		println("ILLEGAL OPCODE 0x%02x at PC=0x%04x (report %d/8)", opcode, (uint16_t) (cpu.pc - 1), reported + 1);
+		reported++;
+	}
+#else
+	(void) opcode;
+#endif
+}
+
 static void cpu_instr_0xd3(int *cycles) {
 	// TODO CHECKME
-	println("CHECKME");
+	debug_illegal_opcode(0xd3);
 }
 
 static void cpu_instr_0xd4(int *cycles) {
@@ -1932,7 +1991,7 @@ static void cpu_instr_0xda(int *cycles) {
 
 static void cpu_instr_0xdb(int *cycles) {
 	// TODO CHECKME
-	println("CHECKME");
+	debug_illegal_opcode(0xdb);
 }
 
 static void cpu_instr_0xdc(int *cycles) {
@@ -1949,7 +2008,7 @@ static void cpu_instr_0xdc(int *cycles) {
 
 static void cpu_instr_0xdd(int *cycles) {
 	// TODO CHECKME
-	println("CHECKME");
+	debug_illegal_opcode(0xdd);
 }
 
 static void cpu_instr_0xde(int *cycles) {
@@ -1979,12 +2038,12 @@ static void cpu_instr_0xe2(int *cycles) {
 
 static void cpu_instr_0xe3(int *cycles) {
 	// TODO CHECKME
-	println("CHECKME");
+	debug_illegal_opcode(0xe3);
 }
 
 static void cpu_instr_0xe4(int *cycles) {
 	// TODO CHECKME
-	println("CHECKME");
+	debug_illegal_opcode(0xe4);
 }
 
 static void cpu_instr_0xe5(int *cycles) {
@@ -2021,17 +2080,17 @@ static void cpu_instr_0xea(int *cycles) {
 
 static void cpu_instr_0xeb(int *cycles) {
 	// TODO CHECKME
-	println("CHECKME");
+	debug_illegal_opcode(0xeb);
 }
 
 static void cpu_instr_0xec(int *cycles) {
 	// TODO CHECKME
-	println("CHECKME");
+	debug_illegal_opcode(0xec);
 }
 
 static void cpu_instr_0xed(int *cycles) {
 	// TODO CHECKME
-	println("CHECKME");
+	debug_illegal_opcode(0xed);
 }
 
 static void cpu_instr_0xee(int *cycles) {
@@ -2070,7 +2129,7 @@ static void cpu_instr_0xf3(int *cycles) {
 
 static void cpu_instr_0xf4(int *cycles) {
 	// TODO CHECKME
-	println("CHECKME");
+	debug_illegal_opcode(0xf4);
 }
 
 static void cpu_instr_0xf5(int *cycles) {
@@ -2113,12 +2172,12 @@ static void cpu_instr_0xfb(int *cycles) {
 
 static void cpu_instr_0xfc(int *cycles) {
 	// TODO CHECKME
-	println("CHECKME");
+	debug_illegal_opcode(0xfc);
 }
 
 static void cpu_instr_0xfd(int *cycles) {
 	// TODO CHECKME
-	println("CHECKME");
+	debug_illegal_opcode(0xfd);
 }
 
 static void cpu_instr_0xfe(int *cycles) {

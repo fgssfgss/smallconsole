@@ -50,4 +50,10 @@ void sound_step (int cycles);
 
 void sound_callback(void* userdata, uint8_t* stream, int len);
 
+#ifdef DEBUG_BUILD
+// logs one AUDIODBG line summarizing the last frame's audio pipeline
+// behavior (see sound.c for the field legend). Debug/diagnostic use only.
+void sound_log_frame_debug (uint32_t frame_number, float frame_wall_ms, uint32_t cpu_halted_cycles, uint32_t cpu_active_cycles);
+#endif
+
 #endif

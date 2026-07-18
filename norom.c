@@ -39,8 +39,9 @@ static void norom_write (uint16_t addr, uint8_t val) {
 	switch (addr) {
 	case 0xa000 ... 0xbfff:
 		sram[addr - 0xa000] = val;
+		break;
 	default:
-		printf("WTF???\n");
+		break;
 	}
 }
 

@@ -1,5 +1,6 @@
 #include "sound.h"
 #include <math.h>
+#include <stdatomic.h>
 
 typedef struct {
 	bool enabled;
@@ -132,6 +133,42 @@ static uint8_t read_wave_sample(uint8_t position) {
 static int frame_seq_cycles = 0;
 static uint8_t frame_seq_step = 0;
 
+// audio samples are synthesized cycle-accurately as the CPU thread runs
+// (see generate_sample()/sound_step below) and handed to the SDL audio
+// thread through this lock-free single-producer/single-consumer ring
+// buffer, instead of the audio thread re-synthesizing waveforms from a
+// live snapshot of register state whenever it happens to be scheduled.
+// A snapshot-based approach can miss or misrepresent register writes that
+// are set and undone faster than an SDL audio buffer (~21ms) turns over.
+// sized generously (rather than tightly around the ~21ms SDL requests) since
+// the producer runs in a burst once per emulated video frame (all of a
+// frame's samples are generated back-to-back inside render_frame, then the
+// CPU thread goes idle for the rest of the frame via SDL_Delay) while the
+// consumer drains steadily in real time; a small buffer underruns during
+// that idle stretch, or during any frame that takes longer than 1/60s to
+// emulate (e.g. heavier work during a scene transition)
+#define RING_BUFFER_SIZE 16384 // ~340ms of headroom at 48kHz
+static int16_t ring_buffer[RING_BUFFER_SIZE];
+static atomic_size_t ring_write_pos = 0;
+static atomic_size_t ring_read_pos = 0;
+static int16_t ring_last_sample = 0;
+
+#define CYCLES_PER_SAMPLE ((float) CPU_FREQ / SOUND_SAMPLE_RATE)
+static float sample_cycle_acc = 0.0f;
+
+#ifdef DEBUG_BUILD
+// debug/diagnostic counters, see sound_log_frame_debug(). The _generated/
+// _dropped/_triggers counters are only ever touched on the CPU thread; the
+// _consumed/_underrun ones are only ever touched on the audio thread, so
+// they need atomics since sound_log_frame_debug() (called from the CPU
+// thread) reads and resets them.
+static uint32_t debug_samples_generated = 0;
+static uint32_t debug_samples_dropped = 0;
+static uint32_t debug_triggers[4] = {0, 0, 0, 0};
+static atomic_uint debug_samples_consumed = 0;
+static atomic_uint debug_underrun_samples = 0;
+#endif
+
 // post-mix filtering: naive (non-band-limited) square/noise/wave synthesis
 // produces harsh edges whose harmonics alias badly once several channels are
 // summed together, which is what makes a busy mix sound "choppy"/crackly. A
@@ -162,6 +199,10 @@ static uint16_t sweep_calc_freq() {
 }
 
 static void trigger_channel1() {
+#ifdef DEBUG_BUILD
+	debug_triggers[0]++;
+#endif
+
 	bool dac_enabled = (regs[SQ1_START_VOL_ENV_ADD_MODE_PERIOD] & 0xF8) != 0;
 
 	state.channel1.enabled = dac_enabled;
@@ -188,6 +229,10 @@ static void trigger_channel1() {
 }
 
 static void trigger_channel2() {
+#ifdef DEBUG_BUILD
+	debug_triggers[1]++;
+#endif
+
 	bool dac_enabled = (regs[SQ2_START_VOL_ENV_ADD_MODE_PERIOD] & 0xF8) != 0;
 
 	state.channel2.enabled = dac_enabled;
@@ -203,6 +248,10 @@ static void trigger_channel2() {
 }
 
 static void trigger_channel3() {
+#ifdef DEBUG_BUILD
+	debug_triggers[2]++;
+#endif
+
 	state.channel3.enabled = state.channel3.dac_power;
 
 	if (state.channel3.internal.length_timer == 0) {
@@ -215,6 +264,10 @@ static void trigger_channel3() {
 }
 
 static void trigger_channel4() {
+#ifdef DEBUG_BUILD
+	debug_triggers[3]++;
+#endif
+
 	bool dac_enabled = (regs[NOISE_START_VOL_ENV_ADD_MODE_PERIOD] & 0xF8) != 0;
 
 	state.channel4.enabled = dac_enabled;
@@ -362,6 +415,15 @@ void sound_init() {
 	state.channel4.enabled = false;
 	frame_seq_cycles = 0;
 	frame_seq_step = 0;
+
+	sample_cycle_acc = 0.0f;
+	atomic_store_explicit(&ring_write_pos, 0, memory_order_relaxed);
+	atomic_store_explicit(&ring_read_pos, 0, memory_order_relaxed);
+	ring_last_sample = 0;
+
+	lowpass_state = 0.0f;
+	highpass_prev_in = 0.0f;
+	highpass_prev_out = 0.0f;
 }
 
 void sound_write_reg (uint16_t addr, uint8_t val) {
@@ -523,27 +585,35 @@ uint8_t sound_read_reg (uint16_t addr) {
 
 void sound_write_wavetable (uint16_t addr, uint8_t val) {
 	//println("SOUND: writing to wavetable %04x = %02x", addr, val);
+
+	if (state.channel3.enabled) {
+		// wave RAM can only be reliably written while the wave channel is
+		// stopped; while it's playing, the CPU and the channel's own sample
+		// fetch are racing for the same bytes, so writes are dropped instead
+		// of splicing new data into the note that's currently sounding
+		return;
+	}
+
 	waveram[addr % 0xFF30] = val;
 }
 
 uint8_t sound_read_wavetable (uint16_t addr) {
 	//println("SOUND: reading from wavetable %04x = %02x", addr);
+
+	if (state.channel3.enabled) {
+		return 0xFF;
+	}
+
 	return waveram[addr % 0xFF30];
 }
 
-void sound_step (int cycles) {
-	frame_seq_cycles += cycles;
-
-	while (frame_seq_cycles >= FRAME_SEQUENCER_PERIOD) {
-		frame_seq_cycles -= FRAME_SEQUENCER_PERIOD;
-		frame_sequencer_tick();
-	}
-}
-
-void sound_callback(void* userdata, uint8_t* stream, int len) {
-	int16_t* buffer = (int16_t*) stream;
-	len /= sizeof(*buffer);
-
+// synthesizes exactly one output sample from the channels' *current*
+// register-derived state, and advances each channel's waveform position by
+// one sample's worth. Called from sound_step, interleaved with the CPU's
+// register writes as they actually happen, so a channel that gets triggered
+// and silenced again within a single audio buffer's time is represented
+// correctly instead of being missed or smeared across the whole buffer.
+static int16_t generate_sample() {
 	uint8_t nr50 = regs[CTRL_VIN_L_EN_VIN_R_EN];
 	uint8_t nr51 = regs[CTRL_LEFT_RIGHT_ENABLE];
 	float left_vol = (nr50 >> 4) & 0x7;
@@ -577,67 +647,182 @@ void sound_callback(void* userdata, uint8_t* stream, int len) {
 	float hp_rc = 1.0f / (2.0f * PI * HIGHPASS_CUTOFF_HZ);
 	float hp_alpha = hp_rc / (hp_rc + dt);
 
-	for (int i = 0; i < len; ++i) {
-		float sample = 0.0f;
+	float sample = 0.0f;
 
-		if (ch1_audible) {
-			int duty_idx = ((int) state.channel1.internal.phase) & 0x7;
-			float digital = duties[state.channel1.duty][duty_idx] ? state.channel1.internal.current_volume : 0.0f;
-			sample += digital - 7.5f;
-		}
-		state.channel1.internal.phase += ch1_step;
-		if (state.channel1.internal.phase >= 8.0f) {
-			state.channel1.internal.phase -= 8.0f;
-		}
+	if (ch1_audible) {
+		int duty_idx = ((int) state.channel1.internal.phase) & 0x7;
+		float digital = duties[state.channel1.duty][duty_idx] ? state.channel1.internal.current_volume : 0.0f;
+		sample += digital - 7.5f;
+	}
+	state.channel1.internal.phase += ch1_step;
+	if (state.channel1.internal.phase >= 8.0f) {
+		state.channel1.internal.phase -= 8.0f;
+	}
 
-		if (ch2_audible) {
-			int duty_idx = ((int) state.channel2.internal.phase) & 0x7;
-			float digital = duties[state.channel2.duty][duty_idx] ? state.channel2.internal.current_volume : 0.0f;
-			sample += digital - 7.5f;
-		}
-		state.channel2.internal.phase += ch2_step;
-		if (state.channel2.internal.phase >= 8.0f) {
-			state.channel2.internal.phase -= 8.0f;
-		}
+	if (ch2_audible) {
+		int duty_idx = ((int) state.channel2.internal.phase) & 0x7;
+		float digital = duties[state.channel2.duty][duty_idx] ? state.channel2.internal.current_volume : 0.0f;
+		sample += digital - 7.5f;
+	}
+	state.channel2.internal.phase += ch2_step;
+	if (state.channel2.internal.phase >= 8.0f) {
+		state.channel2.internal.phase -= 8.0f;
+	}
 
-		state.channel3.internal.phase += ch3_step;
-		while (state.channel3.internal.phase >= 1.0f) {
-			state.channel3.internal.phase -= 1.0f;
-			state.channel3.internal.position = (state.channel3.internal.position + 1) & 0x1F;
-			state.channel3.internal.sample_buffer = read_wave_sample(state.channel3.internal.position);
-		}
-		if (ch3_audible) {
-			uint8_t wshift = wave_shift[state.channel3.volume_code];
-			float digital = (wshift == 4) ? 0.0f : (float) (state.channel3.internal.sample_buffer >> wshift);
-			sample += digital - 7.5f;
-		}
+	state.channel3.internal.phase += ch3_step;
+	while (state.channel3.internal.phase >= 1.0f) {
+		state.channel3.internal.phase -= 1.0f;
+		state.channel3.internal.position = (state.channel3.internal.position + 1) & 0x1F;
+		state.channel3.internal.sample_buffer = read_wave_sample(state.channel3.internal.position);
+	}
+	if (ch3_audible) {
+		uint8_t wshift = wave_shift[state.channel3.volume_code];
+		float digital = (wshift == 4) ? 0.0f : (float) (state.channel3.internal.sample_buffer >> wshift);
+		sample += digital - 7.5f;
+	}
 
-		state.channel4.internal.phase += ch4_step;
-		while (state.channel4.internal.phase >= 1.0f) {
-			state.channel4.internal.phase -= 1.0f;
-			noise_shift_lfsr();
-		}
-		if (ch4_audible) {
-			float digital = (state.channel4.internal.lfsr & 0x1) ? 0.0f : state.channel4.internal.current_volume;
-			sample += digital - 7.5f;
-		}
+	state.channel4.internal.phase += ch4_step;
+	while (state.channel4.internal.phase >= 1.0f) {
+		state.channel4.internal.phase -= 1.0f;
+		noise_shift_lfsr();
+	}
+	if (ch4_audible) {
+		float digital = (state.channel4.internal.lfsr & 0x1) ? 0.0f : state.channel4.internal.current_volume;
+		sample += digital - 7.5f;
+	}
 
-		// smooth the naive digital edges (anti-aliasing)
-		lowpass_state += lp_alpha * (sample - lowpass_state);
-		float filtered = lowpass_state;
+	// smooth the naive digital edges (anti-aliasing)
+	lowpass_state += lp_alpha * (sample - lowpass_state);
+	// during silence this decays exponentially toward 0 and can linger in
+	// denormal-float range for thousands of samples, where the FPU falls
+	// back to slow microcode (10-100x normal cost); this now runs inline on
+	// the CPU thread (see sound_step), so that slowdown steals real time
+	// from CPU/GPU emulation too, not just from the audio thread's budget.
+	// Snapping to exact 0 once inaudible avoids ever entering that range.
+	if (fabsf(lowpass_state) < 1e-15f) {
+		lowpass_state = 0.0f;
+	}
+	float filtered = lowpass_state;
 
-		// block DC so loudness stays consistent regardless of how many
-		// channels are contributing to the per-channel centering
-		float hp_out = filtered - highpass_prev_in + hp_alpha * highpass_prev_out;
-		highpass_prev_in = filtered;
-		highpass_prev_out = hp_out;
+	// block DC so loudness stays consistent regardless of how many
+	// channels are contributing to the per-channel centering
+	float hp_out = filtered - highpass_prev_in + hp_alpha * highpass_prev_out;
+	if (fabsf(hp_out) < 1e-15f) {
+		hp_out = 0.0f;
+	}
+	highpass_prev_in = filtered;
+	highpass_prev_out = hp_out;
 
-		float scaled = hp_out * master_vol * 2600.0f;
+	float scaled = hp_out * master_vol * 2600.0f;
 
-		// soft-knee limiter: compresses peaks smoothly instead of hard
-		// clipping into a crackly flat-top when several channels stack up
-		float limited = tanhf(scaled / 32000.0f) * 32000.0f;
+	// soft-knee limiter: compresses peaks smoothly instead of hard
+	// clipping into a crackly flat-top when several channels stack up
+	float limited = tanhf(scaled / 32000.0f) * 32000.0f;
 
-		buffer[i] = (int16_t) limited;
+	return (int16_t) limited;
+}
+
+// producer side: called only from the CPU thread (via sound_step)
+static void ring_push(int16_t sample) {
+	size_t write_pos = atomic_load_explicit(&ring_write_pos, memory_order_relaxed);
+	size_t next = (write_pos + 1) % RING_BUFFER_SIZE;
+
+	if (next == atomic_load_explicit(&ring_read_pos, memory_order_acquire)) {
+		// the audio thread has fallen behind; drop this sample rather than
+		// overwrite ones it hasn't consumed yet, or stall the CPU thread
+#ifdef DEBUG_BUILD
+		debug_samples_dropped++;
+#endif
+		return;
+	}
+
+	ring_buffer[write_pos] = sample;
+	atomic_store_explicit(&ring_write_pos, next, memory_order_release);
+}
+
+// consumer side: called only from the SDL audio thread (via sound_callback)
+static int16_t ring_pop() {
+	size_t read_pos = atomic_load_explicit(&ring_read_pos, memory_order_relaxed);
+
+	if (read_pos == atomic_load_explicit(&ring_write_pos, memory_order_acquire)) {
+		// underrun: nothing produced yet. Jumping straight to 0 is itself a
+		// sharp discontinuity (broadband, "unfiltered"-sounding click) on
+		// top of the missing content, so fade the last real sample toward
+		// silence instead - within ~2ms this settles to true silence, but a
+		// brief stall doesn't slam the output to a hard edge.
+		ring_last_sample = (int16_t) (ring_last_sample * 0.95f);
+#ifdef DEBUG_BUILD
+		atomic_fetch_add_explicit(&debug_underrun_samples, 1, memory_order_relaxed);
+#endif
+		return ring_last_sample;
+	}
+
+	int16_t sample = ring_buffer[read_pos];
+	atomic_store_explicit(&ring_read_pos, (read_pos + 1) % RING_BUFFER_SIZE, memory_order_release);
+	ring_last_sample = sample;
+#ifdef DEBUG_BUILD
+	atomic_fetch_add_explicit(&debug_samples_consumed, 1, memory_order_relaxed);
+#endif
+	return sample;
+}
+
+void sound_step (int cycles) {
+	frame_seq_cycles += cycles;
+
+	while (frame_seq_cycles >= FRAME_SEQUENCER_PERIOD) {
+		frame_seq_cycles -= FRAME_SEQUENCER_PERIOD;
+		frame_sequencer_tick();
+	}
+
+	sample_cycle_acc += cycles;
+
+	while (sample_cycle_acc >= CYCLES_PER_SAMPLE) {
+		sample_cycle_acc -= CYCLES_PER_SAMPLE;
+#ifdef DEBUG_BUILD
+		debug_samples_generated++;
+#endif
+		ring_push(generate_sample());
 	}
 }
+
+void sound_callback(void* userdata, uint8_t* stream, int len) {
+	int16_t* buffer = (int16_t*) stream;
+	len /= sizeof(*buffer);
+
+	for (int i = 0; i < len; ++i) {
+		buffer[i] = ring_pop();
+	}
+}
+
+#ifdef DEBUG_BUILD
+// one compact line per video frame: how much real (wall-clock) time the
+// frame took, how the CPU thread spent that frame's cycles, and what the
+// audio pipeline did with the samples produced during it. Meant to be
+// collected by redirecting stdout to a file for a few seconds around a
+// suspect moment (e.g. `./smallconsole > log.txt`), not left running -
+// at 60 lines/sec this is roughly 6-10KB/sec of text.
+void sound_log_frame_debug (uint32_t frame_number, float frame_wall_ms, uint32_t cpu_halted_cycles, uint32_t cpu_active_cycles) {
+	uint32_t consumed = atomic_exchange_explicit(&debug_samples_consumed, 0, memory_order_relaxed);
+	uint32_t underrun = atomic_exchange_explicit(&debug_underrun_samples, 0, memory_order_relaxed);
+
+	size_t write_pos = atomic_load_explicit(&ring_write_pos, memory_order_relaxed);
+	size_t read_pos = atomic_load_explicit(&ring_read_pos, memory_order_relaxed);
+	size_t fill = (write_pos + RING_BUFFER_SIZE - read_pos) % RING_BUFFER_SIZE;
+
+	println(
+		"AUDIODBG frame=%u wall_ms=%.2f halt_cyc=%u act_cyc=%u gen=%u drop=%u cons=%u under=%u fill=%u trig1=%u trig2=%u trig3=%u trig4=%u nr52=%02x en=%d%d%d%d",
+		frame_number, frame_wall_ms, cpu_halted_cycles, cpu_active_cycles,
+		debug_samples_generated, debug_samples_dropped, consumed, underrun, (unsigned) fill,
+		debug_triggers[0], debug_triggers[1], debug_triggers[2], debug_triggers[3],
+		sound_read_reg(0xFF26),
+		state.channel1.enabled, state.channel2.enabled, state.channel3.enabled, state.channel4.enabled
+	);
+
+	debug_samples_generated = 0;
+	debug_samples_dropped = 0;
+	debug_triggers[0] = 0;
+	debug_triggers[1] = 0;
+	debug_triggers[2] = 0;
+	debug_triggers[3] = 0;
+}
+#endif
