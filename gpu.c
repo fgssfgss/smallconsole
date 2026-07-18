@@ -146,12 +146,23 @@ void gpu_init (void) {
 }
 
 void gpu_step(int cycles) {
+	// gpu_step runs once per CPU instruction, not once per frame, so while
+	// the LCD is disabled this branch can be hit thousands of times before
+	// it's turned back on. screen_clear()/screen_vsync() do a real
+	// SDL_RenderClear + SDL_RenderPresent, which is far too heavy to repeat
+	// on every single call - blank the display once, on the transition to
+	// disabled, not continuously for as long as it stays disabled.
+	static bool lcd_was_disabled = false;
+
 	uint8_t status            = state.lcd_stat;
 	int     current_mode      = state.lcd_stat & STAT_MODE_MASK;
 
 	if (!(state.lcd_control & CTRL_RENDER_ENABLE)) {
-		screen_clear();
-		screen_vsync();
+		if (!lcd_was_disabled) {
+			screen_clear();
+			screen_vsync();
+			lcd_was_disabled = true;
+		}
 		state.scanline_counter = 456;
 		state.curline          = 0;
 		status &= 252;
@@ -160,6 +171,8 @@ void gpu_step(int cycles) {
 		state.lcd_stat = status;
 		return;
 	}
+
+	lcd_was_disabled = false;
 
 	if (state.curline >= 144 && state.curline <= 153) {
 		status |= STAT_MODE_BLANK_FLAG;

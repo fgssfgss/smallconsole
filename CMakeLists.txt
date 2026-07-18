@@ -7,12 +7,12 @@ if (EMSCRIPTEN)
 else()
     set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${smallconsole_SOURCE_DIR}/cmake")
     set(CMAKE_C_STANDARD 11)
-    set(CMAKE_C_FLAGS "-O1 -pipe -g -fsanitize=address -fno-omit-frame-pointer")
+    set(CMAKE_C_FLAGS "-O1 -pipe -g -fno-omit-frame-pointer")
     find_package(SDL2 REQUIRED)
     include_directories(${SDL2_INCLUDE_DIR})
 endif()
 
-add_executable(smallconsole main.c
+add_executable(smallconsole main.c 
                             common.c
                             cpu.c
                             gpu.c
@@ -20,7 +20,8 @@ add_executable(smallconsole main.c
                             rom.c
                             norom.c
                             mbc1.c
-                            timer.c)
+                            timer.c
+                            sound.c)
 
 if (EMSCRIPTEN)
     add_custom_command(TARGET smallconsole
@@ -28,5 +29,5 @@ if (EMSCRIPTEN)
     POST_BUILD
     COMMENT "Creating HTML file, please copy index.* files to your server root dir")
 else()
-    target_link_libraries(smallconsole "${SDL2_LIBRARY}")
+    target_link_libraries(smallconsole "${SDL2_LIBRARY}" "-lm") 
 endif()
